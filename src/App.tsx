@@ -1,6 +1,27 @@
 import { useState } from "react";
 
-const dummyData = [
+interface Comment {
+  year: string;
+  text: string;
+}
+
+interface Course {
+  id: number;
+  name: string;
+  professor: string;
+  department: string;
+  credits: number;
+  difficulty: number;
+  dropout: number;
+  attendance: string;
+  homework: string;
+  testType: string;
+  pastTest: string;
+  comments: Comment[];
+  tags: string[];
+}
+
+const dummyData: Course[] = [
   {
     id: 1,
     name: "経営学概論",
@@ -98,7 +119,7 @@ const dummyData = [
   },
 ];
 
-const difficultyLabel = (n) => {
+const difficultyLabel = (n: number) => {
   if (n <= 1) return { text: "超楽単", color: "#22c55e" };
   if (n <= 2) return { text: "楽単", color: "#84cc16" };
   if (n === 3) return { text: "普通", color: "#eab308" };
@@ -106,7 +127,7 @@ const difficultyLabel = (n) => {
   return { text: "激ムズ", color: "#ef4444" };
 };
 
-const dropoutColor = (n) => {
+const dropoutColor = (n: number) => {
   if (n <= 5) return "#22c55e";
   if (n <= 15) return "#eab308";
   if (n <= 30) return "#f97316";
@@ -115,7 +136,7 @@ const dropoutColor = (n) => {
 
 export default function App() {
   const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState(null);
+  const [selected, setSelected] = useState<Course | null>(null);
   const [activeTab, setActiveTab] = useState("info");
 
   const filtered = dummyData.filter(
@@ -130,7 +151,6 @@ export default function App() {
 
   return (
     <div style={{ fontFamily: "'Hiragino Sans', 'Noto Sans JP', sans-serif", background: "#0f0f13", minHeight: "100vh", color: "#e8e8f0" }}>
-      {/* Header */}
       <div style={{ background: "linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)", borderBottom: "1px solid #2a2a4a", padding: "20px 24px 16px" }}>
         <div style={{ maxWidth: 720, margin: "0 auto" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
@@ -172,8 +192,8 @@ export default function App() {
                       background: "#1a1a2e", border: "1px solid #2a2a4a", borderRadius: 12,
                       padding: "14px 16px", cursor: "pointer", transition: "border-color 0.15s",
                     }}
-                    onMouseEnter={(e) => e.currentTarget.style.borderColor = "#7c3aed"}
-                    onMouseLeave={(e) => e.currentTarget.style.borderColor = "#2a2a4a"}
+                    onMouseEnter={(e) => (e.currentTarget.style.borderColor = "#7c3aed")}
+                    onMouseLeave={(e) => (e.currentTarget.style.borderColor = "#2a2a4a")}
                   >
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
                       <div>
@@ -211,7 +231,6 @@ export default function App() {
           </>
         ) : (
           <div>
-            {/* Back */}
             <button
               onClick={() => setSelected(null)}
               style={{ background: "none", border: "none", color: "#7c3aed", cursor: "pointer", fontSize: 13, padding: "0 0 16px", display: "flex", alignItems: "center", gap: 4 }}
@@ -219,23 +238,23 @@ export default function App() {
               ← 一覧に戻る
             </button>
 
-            {/* Course header */}
             <div style={{ background: "#1a1a2e", border: "1px solid #2a2a4a", borderRadius: 12, padding: "16px", marginBottom: 12 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                 <div>
                   <h2 style={{ margin: "0 0 4px", fontSize: 18, color: "#fff" }}>{selected.name}</h2>
                   <div style={{ fontSize: 13, color: "#8888aa" }}>{selected.professor}｜{selected.department}｜{selected.credits}単位</div>
                 </div>
-                <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: diff.color, background: diff.color + "22", padding: "3px 10px", borderRadius: 20 }}>{diff.text}</div>
-                </div>
+                {diff && (
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: diff.color, background: diff.color + "22", padding: "3px 10px", borderRadius: 20 }}>{diff.text}</div>
+                  </div>
+                )}
               </div>
 
-              {/* Stats */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginTop: 14 }}>
                 {[
                   { label: "落単率", value: selected.dropout + "%", color: dropoutColor(selected.dropout) },
-                  { label: "難易度", value: "★".repeat(selected.difficulty) + "☆".repeat(5 - selected.difficulty), color: diff.color },
+                  { label: "難易度", value: "★".repeat(selected.difficulty) + "☆".repeat(5 - selected.difficulty), color: diff?.color ?? "#fff" },
                   { label: "口コミ数", value: selected.comments.length + "件", color: "#7c3aed" },
                 ].map((s) => (
                   <div key={s.label} style={{ background: "#12121e", borderRadius: 8, padding: "10px 8px", textAlign: "center" }}>
@@ -252,9 +271,8 @@ export default function App() {
               </div>
             </div>
 
-            {/* Tabs */}
             <div style={{ display: "flex", gap: 4, marginBottom: 12 }}>
-              {[["info", "📋 授業情報"], ["test", "📝 テスト情報"], ["comments", "💬 口コミ"]].map(([id, label]) => (
+              {[["info", "📋 授業情報"], ["test", "📝 テスト情報"], ["comments", "💬 口コミ"]] .map(([id, label]) => (
                 <button
                   key={id}
                   onClick={() => setActiveTab(id)}
@@ -270,7 +288,6 @@ export default function App() {
               ))}
             </div>
 
-            {/* Tab content */}
             <div style={{ background: "#1a1a2e", border: "1px solid #2a2a4a", borderRadius: 12, padding: "16px" }}>
               {activeTab === "info" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
