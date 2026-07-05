@@ -74,13 +74,11 @@ export default function App() {
   const [uniQuery, setUniQuery] = useState("");
   const [selectedUni, setSelectedUni] = useState("");
   const [query, setQuery] = useState("");
-  const [courses, setCourses] = useState<Course[]>([]);
   const [allCourses, setAllCourses] = useState<Course[]>([]);
   const [selected, setSelected] = useState<Course | null>(null);
   const [activeTab, setActiveTab] = useState("data");
   const [comments, setComments] = useState<Comment[]>([]);
   const [allComments, setAllComments] = useState<Comment[]>([]);
-  const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({
     year: "", gpa: "", ease_rating: 0, workload_rating: 0,
