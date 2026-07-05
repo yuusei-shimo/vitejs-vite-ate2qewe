@@ -30,7 +30,7 @@ interface Course {
   university: string;
 }
 
-type Screen = "top" | "courses" | "detail" | "add_course";
+type Screen = "top" | "courses" | "detail" | "add_course" | "add_university";
 
 const StarRating = ({ value, onChange }: { value: number; onChange?: (v: number) => void }) => (
   <div style={{ display: "flex", gap: 4 }}>
@@ -89,6 +89,9 @@ export default function App() {
   const [courseForm, setCourseForm] = useState({
     name: "", professor: "", department: "", credits: "", university: "",
   });
+  const [uniForm, setUniForm] = useState({ university: "" });
+  const [addingUni, setAddingUni] = useState(false);
+  const [uniAdded, setUniAdded] = useState(false);
 
   useEffect(() => { fetchAllCourses(); fetchAllComments(); }, []);
   useEffect(() => { if (selected) fetchComments(selected.id); }, [selected]);
@@ -187,7 +190,7 @@ export default function App() {
             <span style={{ fontSize: 11, background: "#7c3aed", color: "#fff", padding: "2px 8px", borderRadius: 20, fontWeight: 600 }}>BETA</span>
           </div>
           {screen === "top" && <p style={{ margin: "4px 0 0", fontSize: 12, color: "#8888aa" }}>先輩たちのリアルな口コミで、賢く履修選択</p>}
-          {(screen === "courses" || screen === "add_course") && (
+          {(screen === "courses" || screen === "add_course" || screen === "add_university") && (
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
               <button onClick={() => { setScreen("top"); setSelectedUni(""); setQuery(""); }} style={{ background: "none", border: "none", color: "#7c3aed", cursor: "pointer", fontSize: 12, padding: 0 }}>← トップ</button>
               <span style={{ fontSize: 13, color: "#e8e8f0", fontWeight: 600 }}>{selectedUni}</span>
@@ -212,6 +215,21 @@ export default function App() {
               <h2 style={{ margin: "0 0 8px", fontSize: 22, color: "#fff" }}>大学を選んでください</h2>
               <p style={{ margin: 0, fontSize: 13, color: "#8888aa" }}>授業の口コミ・楽単情報を検索できます</p>
             </div>
+
+            {/* 追加ボタン */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>
+              <button onClick={() => setScreen("add_university")}
+                style={{ padding: "14px", background: "linear-gradient(135deg, #7c3aed, #4f46e5)", border: "none", borderRadius: 12, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+                <span style={{ fontSize: 24 }}>🏫</span>
+                <span>大学を追加する</span>
+              </button>
+              <button onClick={() => { setScreen("add_course"); setCourseForm({ name: "", professor: "", department: "", credits: "", university: "" }); }}
+                style={{ padding: "14px", background: "linear-gradient(135deg, #0e7490, #0f766e)", border: "none", borderRadius: 12, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+                <span style={{ fontSize: 24 }}>📚</span>
+                <span>授業を追加する</span>
+              </button>
+            </div>
+
             <div style={{ position: "relative", marginBottom: 20 }}>
               <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: 16, opacity: 0.5 }}>🔍</span>
               <input value={uniQuery} onChange={(e) => setUniQuery(e.target.value)}
@@ -347,6 +365,56 @@ export default function App() {
                   disabled={addingCourse || !courseForm.name || !courseForm.professor || !courseForm.university || !courseForm.credits}
                   style={{ flex: 2, padding: "10px", background: "#7c3aed", border: "none", borderRadius: 6, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", opacity: addingCourse ? 0.5 : 1 }}>
                   {addingCourse ? "追加中..." : "授業を追加する"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+
+        {/* 大学追加フォーム */}
+        {screen === "add_university" && (
+          <div>
+            <div style={{ background: "#1a1a2e", border: "1px solid #2a2a4a", borderRadius: 12, padding: "16px" }}>
+              <div style={{ fontSize: 15, color: "#fff", fontWeight: 700, marginBottom: 16 }}>🏫 大学を追加する</div>
+
+              {uniAdded && (
+                <div style={{ background: "#14532d", border: "1px solid #22c55e", borderRadius: 8, padding: "10px 14px", marginBottom: 12, fontSize: 13, color: "#22c55e" }}>
+                  ✅ 大学を追加しました！授業も追加しましょう。
+                </div>
+              )}
+
+              <label style={labelStyle}>大学名 *</label>
+              <input value={uniForm.university} onChange={(e) => setUniForm({ university: e.target.value })}
+                placeholder="例：早稲田大学" style={inputStyle} />
+
+              <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                <button onClick={() => setScreen("top")}
+                  style={{ flex: 1, padding: "10px", background: "none", border: "1px solid #3a3a5c", borderRadius: 6, color: "#8888aa", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+                  キャンセル
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!uniForm.university) return;
+                    setAddingUni(true);
+                    await supabase.from("courses").insert({
+                      name: "（準備中）",
+                      professor: "（未設定）",
+                      department: null,
+                      credits: 2,
+                      university: uniForm.university,
+                      tags: "",
+                    });
+                    await fetchAllCourses();
+                    setSelectedUni(uniForm.university);
+                    setUniForm({ university: "" });
+                    setAddingUni(false);
+                    setUniAdded(true);
+                    setTimeout(() => { setUniAdded(false); setScreen("courses"); }, 2000);
+                  }}
+                  disabled={addingUni || !uniForm.university}
+                  style={{ flex: 2, padding: "10px", background: "#7c3aed", border: "none", borderRadius: 6, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", opacity: addingUni ? 0.5 : 1 }}>
+                  {addingUni ? "追加中..." : "大学を追加する"}
                 </button>
               </div>
             </div>
