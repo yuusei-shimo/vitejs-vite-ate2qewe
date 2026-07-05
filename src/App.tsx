@@ -27,7 +27,10 @@ interface Course {
   department: string;
   credits: number;
   tags: string;
+  university: string;
 }
+
+type Screen = "top" | "courses" | "detail";
 
 const StarRating = ({ value, onChange }: { value: number; onChange?: (v: number) => void }) => (
   <div style={{ display: "flex", gap: 4 }}>
@@ -67,27 +70,29 @@ const BarChart = ({ items, color }: { items: { val: string; pct: number }[]; col
 );
 
 export default function App() {
+  const [screen, setScreen] = useState<Screen>("top");
+  const [uniQuery, setUniQuery] = useState("");
+  const [selectedUni, setSelectedUni] = useState("");
   const [query, setQuery] = useState("");
   const [courses, setCourses] = useState<Course[]>([]);
+  const [allCourses, setAllCourses] = useState<Course[]>([]);
   const [selected, setSelected] = useState<Course | null>(null);
   const [activeTab, setActiveTab] = useState("data");
   const [comments, setComments] = useState<Comment[]>([]);
   const [allComments, setAllComments] = useState<Comment[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({
     year: "", gpa: "", ease_rating: 0, workload_rating: 0,
     exam_type: "", material_allowed: "", attendance_type: "", passed: "", text: "",
   });
 
-  useEffect(() => { fetchCourses(); fetchAllComments(); }, []);
+  useEffect(() => { fetchAllCourses(); fetchAllComments(); }, []);
   useEffect(() => { if (selected) fetchComments(selected.id); }, [selected]);
 
-  const fetchCourses = async () => {
-    setLoading(true);
+  const fetchAllCourses = async () => {
     const { data } = await supabase.from("courses").select("*");
-    setCourses(data || []);
-    setLoading(false);
+    setAllCourses(data || []);
   };
 
   const fetchAllComments = async () => {
@@ -133,9 +138,14 @@ export default function App() {
     };
   };
 
-  const filtered = courses.filter(c =>
-    c.name.includes(query) || c.professor.includes(query) ||
-    c.department.includes(query) || c.tags.includes(query)
+  // 大学一覧（重複なし）
+  const universities = Array.from(new Set(allCourses.map(c => c.university).filter(Boolean)));
+  const filteredUnis = universities.filter(u => u.includes(uniQuery));
+
+  // 選択大学の授業一覧
+  const filteredCourses = allCourses.filter(c =>
+    c.university === selectedUni &&
+    (c.name.includes(query) || c.professor.includes(query) || c.department.includes(query) || c.tags.includes(query))
   );
 
   const stats = selected ? getCourseStats(selected.id) : null;
@@ -153,72 +163,121 @@ export default function App() {
       <div style={{ background: "linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)", borderBottom: "1px solid #2a2a4a", padding: "20px 24px 16px" }}>
         <div style={{ maxWidth: 720, margin: "0 auto" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-            <span style={{ fontSize: 22 }}>📖</span>
-            <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: "#fff" }}>裏シラバス</h1>
+            <span style={{ fontSize: 22, cursor: "pointer" }} onClick={() => { setScreen("top"); setSelectedUni(""); setSelected(null); setQuery(""); }}>📖</span>
+            <h1 onClick={() => { setScreen("top"); setSelectedUni(""); setSelected(null); setQuery(""); }}
+              style={{ margin: 0, fontSize: 20, fontWeight: 700, color: "#fff", cursor: "pointer" }}>裏シラバス</h1>
             <span style={{ fontSize: 11, background: "#7c3aed", color: "#fff", padding: "2px 8px", borderRadius: 20, fontWeight: 600 }}>BETA</span>
           </div>
-          <p style={{ margin: "0 0 16px", fontSize: 12, color: "#8888aa" }}>先輩たちのリアルな口コミで、賢く履修選択</p>
-          <div style={{ position: "relative" }}>
-            <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: 16, opacity: 0.5 }}>🔍</span>
-            <input value={query} onChange={(e) => { setQuery(e.target.value); setSelected(null); }}
-              placeholder="授業名・教授名・タグで検索..."
-              style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px 10px 38px", background: "#1e1e30", border: "1px solid #3a3a5c", borderRadius: 10, color: "#e8e8f0", fontSize: 14, outline: "none" }} />
-          </div>
+          {screen === "top" && <p style={{ margin: "4px 0 0", fontSize: 12, color: "#8888aa" }}>先輩たちのリアルな口コミで、賢く履修選択</p>}
+          {screen === "courses" && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+              <button onClick={() => { setScreen("top"); setSelectedUni(""); setQuery(""); }} style={{ background: "none", border: "none", color: "#7c3aed", cursor: "pointer", fontSize: 12, padding: 0 }}>← トップ</button>
+              <span style={{ fontSize: 13, color: "#e8e8f0", fontWeight: 600 }}>{selectedUni}</span>
+            </div>
+          )}
+          {screen === "detail" && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+              <button onClick={() => { setScreen("courses"); setSelected(null); }} style={{ background: "none", border: "none", color: "#7c3aed", cursor: "pointer", fontSize: 12, padding: 0 }}>← {selectedUni}</button>
+              <span style={{ fontSize: 13, color: "#e8e8f0", fontWeight: 600 }}>{selected?.name}</span>
+            </div>
+          )}
         </div>
       </div>
 
       <div style={{ maxWidth: 720, margin: "0 auto", padding: "16px 24px" }}>
-        {!selected ? (
-          <>
-            <p style={{ fontSize: 12, color: "#6666aa", marginBottom: 12 }}>{loading ? "読み込み中..." : `${filtered.length}件の授業`}</p>
-            {loading ? (
-              <div style={{ textAlign: "center", color: "#6666aa", padding: "40px 0" }}>データを取得中...</div>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {filtered.map((course) => {
-                  const s = getCourseStats(course.id);
-                  return (
-                    <div key={course.id}
-                      onClick={() => { setSelected(course); setActiveTab("data"); }}
-                      style={{ background: "#1a1a2e", border: "1px solid #2a2a4a", borderRadius: 12, padding: "14px 16px", cursor: "pointer" }}
-                      onMouseEnter={(e) => (e.currentTarget.style.borderColor = "#7c3aed")}
-                      onMouseLeave={(e) => (e.currentTarget.style.borderColor = "#2a2a4a")}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-                        <div>
-                          <div style={{ fontWeight: 700, fontSize: 15, color: "#fff" }}>{course.name}</div>
-                          <div style={{ fontSize: 12, color: "#8888aa", marginTop: 2 }}>{course.professor}｜{course.department}｜{course.credits}単位</div>
-                        </div>
-                        {s ? (
-                          <div style={{ textAlign: "right", flexShrink: 0, marginLeft: 12 }}>
-                            <div style={{ fontSize: 12, color: "#f59e0b", fontWeight: 700 }}>楽単 ★{s.easeAvg}</div>
-                            <div style={{ fontSize: 12, fontWeight: 700, color: s.passRate >= 80 ? "#22c55e" : s.passRate >= 60 ? "#eab308" : "#ef4444" }}>取得率 {s.passRate}%</div>
-                            <div style={{ fontSize: 11, color: "#6666aa" }}>{s.count}件の口コミ</div>
-                          </div>
-                        ) : (
-                          <div style={{ fontSize: 11, color: "#6666aa", flexShrink: 0, marginLeft: 12 }}>口コミなし</div>
-                        )}
-                      </div>
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                        {course.tags.split(",").map((tag) => (
-                          <span key={tag} style={{ fontSize: 11, background: "#2a2a4a", color: "#aaaacc", padding: "2px 8px", borderRadius: 20 }}>#{tag.trim()}</span>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-                {filtered.length === 0 && (
-                  <div style={{ textAlign: "center", color: "#6666aa", padding: "40px 0" }}>「{query}」に一致する授業が見つかりません</div>
-                )}
-              </div>
-            )}
-          </>
-        ) : (
-          <div>
-            <button onClick={() => setSelected(null)}
-              style={{ background: "none", border: "none", color: "#7c3aed", cursor: "pointer", fontSize: 13, padding: "0 0 16px" }}>
-              ← 一覧に戻る
-            </button>
 
+        {/* トップ：大学検索 */}
+        {screen === "top" && (
+          <div>
+            <div style={{ textAlign: "center", padding: "32px 0 24px" }}>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>🎓</div>
+              <h2 style={{ margin: "0 0 8px", fontSize: 22, color: "#fff" }}>大学を選んでください</h2>
+              <p style={{ margin: 0, fontSize: 13, color: "#8888aa" }}>授業の口コミ・楽単情報を検索できます</p>
+            </div>
+            <div style={{ position: "relative", marginBottom: 20 }}>
+              <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: 16, opacity: 0.5 }}>🔍</span>
+              <input value={uniQuery} onChange={(e) => setUniQuery(e.target.value)}
+                placeholder="大学名を検索..."
+                style={{ width: "100%", boxSizing: "border-box", padding: "12px 12px 12px 38px", background: "#1e1e30", border: "1px solid #3a3a5c", borderRadius: 10, color: "#e8e8f0", fontSize: 14, outline: "none" }} />
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {filteredUnis.length === 0 ? (
+                <div style={{ textAlign: "center", color: "#6666aa", padding: "30px 0", fontSize: 14 }}>
+                  {uniQuery ? `「${uniQuery}」に一致する大学が見つかりません` : "大学データがありません"}
+                </div>
+              ) : filteredUnis.map((uni) => {
+                const uniCourses = allCourses.filter(c => c.university === uni);
+                const uniComments = allComments.filter(c => uniCourses.some(course => course.id === c.course_id));
+                return (
+                  <div key={uni}
+                    onClick={() => { setSelectedUni(uni); setScreen("courses"); setQuery(""); }}
+                    style={{ background: "#1a1a2e", border: "1px solid #2a2a4a", borderRadius: 12, padding: "16px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}
+                    onMouseEnter={(e) => (e.currentTarget.style.borderColor = "#7c3aed")}
+                    onMouseLeave={(e) => (e.currentTarget.style.borderColor = "#2a2a4a")}>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 16, color: "#fff", marginBottom: 4 }}>{uni}</div>
+                      <div style={{ fontSize: 12, color: "#8888aa" }}>{uniCourses.length}授業 · {uniComments.length}件の口コミ</div>
+                    </div>
+                    <span style={{ color: "#7c3aed", fontSize: 20 }}>→</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* 授業一覧 */}
+        {screen === "courses" && (
+          <div>
+            <div style={{ position: "relative", marginBottom: 16 }}>
+              <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: 16, opacity: 0.5 }}>🔍</span>
+              <input value={query} onChange={(e) => setQuery(e.target.value)}
+                placeholder="授業名・教授名・タグで検索..."
+                style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px 10px 38px", background: "#1e1e30", border: "1px solid #3a3a5c", borderRadius: 10, color: "#e8e8f0", fontSize: 14, outline: "none" }} />
+            </div>
+            <p style={{ fontSize: 12, color: "#6666aa", marginBottom: 12 }}>{filteredCourses.length}件の授業</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {filteredCourses.map((course) => {
+                const s = getCourseStats(course.id);
+                return (
+                  <div key={course.id}
+                    onClick={() => { setSelected(course); setScreen("detail"); setActiveTab("data"); }}
+                    style={{ background: "#1a1a2e", border: "1px solid #2a2a4a", borderRadius: 12, padding: "14px 16px", cursor: "pointer" }}
+                    onMouseEnter={(e) => (e.currentTarget.style.borderColor = "#7c3aed")}
+                    onMouseLeave={(e) => (e.currentTarget.style.borderColor = "#2a2a4a")}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: 15, color: "#fff" }}>{course.name}</div>
+                        <div style={{ fontSize: 12, color: "#8888aa", marginTop: 2 }}>{course.professor}｜{course.department}｜{course.credits}単位</div>
+                      </div>
+                      {s ? (
+                        <div style={{ textAlign: "right", flexShrink: 0, marginLeft: 12 }}>
+                          <div style={{ fontSize: 12, color: "#f59e0b", fontWeight: 700 }}>楽単 ★{s.easeAvg}</div>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: s.passRate >= 80 ? "#22c55e" : s.passRate >= 60 ? "#eab308" : "#ef4444" }}>取得率 {s.passRate}%</div>
+                          <div style={{ fontSize: 11, color: "#6666aa" }}>{s.count}件の口コミ</div>
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: 11, color: "#6666aa", flexShrink: 0, marginLeft: 12 }}>口コミなし</div>
+                      )}
+                    </div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {course.tags.split(",").map((tag) => (
+                        <span key={tag} style={{ fontSize: 11, background: "#2a2a4a", color: "#aaaacc", padding: "2px 8px", borderRadius: 20 }}>#{tag.trim()}</span>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+              {filteredCourses.length === 0 && (
+                <div style={{ textAlign: "center", color: "#6666aa", padding: "40px 0" }}>授業が見つかりません</div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* 授業詳細 */}
+        {screen === "detail" && selected && (
+          <div>
             {/* Course header */}
             <div style={{ background: "#1a1a2e", border: "1px solid #2a2a4a", borderRadius: 12, padding: "16px", marginBottom: 12 }}>
               <h2 style={{ margin: "0 0 4px", fontSize: 18, color: "#fff" }}>{selected.name}</h2>
@@ -258,8 +317,6 @@ export default function App() {
             </div>
 
             <div style={{ background: "#1a1a2e", border: "1px solid #2a2a4a", borderRadius: 12, padding: "16px" }}>
-
-              {/* 授業データタブ */}
               {activeTab === "data" && (
                 <div>
                   {!stats ? (
@@ -283,10 +340,8 @@ export default function App() {
                 </div>
               )}
 
-              {/* 口コミタブ */}
               {activeTab === "comments" && (
                 <div>
-                  {/* 投稿フォーム */}
                   <div style={{ background: "#12121e", borderRadius: 8, padding: 12, marginBottom: 16 }}>
                     <div style={{ fontSize: 13, color: "#7c3aed", fontWeight: 700, marginBottom: 12 }}>口コミを投稿する</div>
 
@@ -349,7 +404,6 @@ export default function App() {
                     </button>
                   </div>
 
-                  {/* 口コミ一覧 */}
                   <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                     {comments.length === 0 ? (
                       <div style={{ textAlign: "center", color: "#6666aa", padding: "20px 0", fontSize: 13 }}>まだ口コミがありません</div>
