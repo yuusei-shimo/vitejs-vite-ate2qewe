@@ -30,7 +30,7 @@ interface Course {
   university: string;
 }
 
-type Screen = "top" | "courses" | "detail" | "add_course" | "add_university";
+type Screen = "top" | "courses" | "detail" | "add_course";
 
 const StarRating = ({ value, onChange }: { value: number; onChange?: (v: number) => void }) => (
   <div style={{ display: "flex", gap: 4 }}>
@@ -69,6 +69,17 @@ const BarChart = ({ items, color }: { items: { val: string; pct: number }[]; col
   </div>
 );
 
+// 文字列の類似度（簡易版）
+const similarity = (a: string, b: string) => {
+  const s1 = a.toLowerCase().replace(/\s/g, "");
+  const s2 = b.toLowerCase().replace(/\s/g, "");
+  if (s1 === s2) return 1;
+  if (s1.includes(s2) || s2.includes(s1)) return 0.8;
+  let matches = 0;
+  for (const c of s1) { if (s2.includes(c)) matches++; }
+  return matches / Math.max(s1.length, s2.length);
+};
+
 export default function App() {
   const [screen, setScreen] = useState<Screen>("top");
   const [uniQuery, setUniQuery] = useState("");
@@ -82,6 +93,10 @@ export default function App() {
   const [submitting, setSubmitting] = useState(false);
   const [addingCourse, setAddingCourse] = useState(false);
   const [courseAdded, setCourseAdded] = useState(false);
+  const [duplicateError, setDuplicateError] = useState("");
+  const [similarCourses, setSimilarCourses] = useState<Course[]>([]);
+  const [uniInputMode, setUniInputMode] = useState<"select" | "new">("select");
+
   const [form, setForm] = useState({
     year: "", gpa: "", ease_rating: 0, workload_rating: 0,
     exam_type: "", material_allowed: "", attendance_type: "", passed: "", text: "",
@@ -89,12 +104,34 @@ export default function App() {
   const [courseForm, setCourseForm] = useState({
     name: "", professor: "", department: "", credits: "", university: "",
   });
-  const [uniForm, setUniForm] = useState({ university: "" });
-  const [addingUni, setAddingUni] = useState(false);
-  const [uniAdded, setUniAdded] = useState(false);
 
   useEffect(() => { fetchAllCourses(); fetchAllComments(); }, []);
   useEffect(() => { if (selected) fetchComments(selected.id); }, [selected]);
+
+  // 授業名入力時に類似授業をチェック
+  useEffect(() => {
+    if (!courseForm.name || courseForm.name.length < 2 || !courseForm.university) {
+      setSimilarCourses([]);
+      setDuplicateError("");
+      return;
+    }
+    const uniCourses = allCourses.filter(c => c.university === courseForm.university);
+    // 完全一致チェック
+    const exact = uniCourses.find(c =>
+      c.name === courseForm.name && c.professor === courseForm.professor
+    );
+    if (exact) {
+      setDuplicateError("この授業名と教員名の組み合わせはすでに登録されています。");
+      setSimilarCourses([]);
+      return;
+    }
+    setDuplicateError("");
+    // 類似授業チェック
+    const similar = uniCourses.filter(c =>
+      c.name !== courseForm.name && similarity(c.name, courseForm.name) > 0.5
+    ).slice(0, 3);
+    setSimilarCourses(similar);
+  }, [courseForm.name, courseForm.professor, courseForm.university, allCourses]);
 
   const fetchAllCourses = async () => {
     const { data } = await supabase.from("courses").select("*");
@@ -113,7 +150,7 @@ export default function App() {
   };
 
   const submitCourse = async () => {
-    if (!courseForm.name || !courseForm.professor || !courseForm.university || !courseForm.credits) return;
+    if (!courseForm.name || !courseForm.professor || !courseForm.university || !courseForm.credits || duplicateError) return;
     setAddingCourse(true);
     await supabase.from("courses").insert({
       name: courseForm.name,
@@ -123,10 +160,14 @@ export default function App() {
       university: courseForm.university,
       tags: "",
     });
-    setCourseForm({ name: "", professor: "", department: "", credits: "", university: selectedUni });
+    const uni = courseForm.university;
+    setCourseForm({ name: "", professor: "", department: "", credits: "", university: "" });
+    setSimilarCourses([]);
     await fetchAllCourses();
     setAddingCourse(false);
     setCourseAdded(true);
+    setSelectedUni(uni);
+    setScreen("courses");
     setTimeout(() => setCourseAdded(false), 3000);
   };
 
@@ -190,10 +231,16 @@ export default function App() {
             <span style={{ fontSize: 11, background: "#7c3aed", color: "#fff", padding: "2px 8px", borderRadius: 20, fontWeight: 600 }}>BETA</span>
           </div>
           {screen === "top" && <p style={{ margin: "4px 0 0", fontSize: 12, color: "#8888aa" }}>先輩たちのリアルな口コミで、賢く履修選択</p>}
-          {(screen === "courses" || screen === "add_course" || screen === "add_university") && (
+          {screen === "courses" && (
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
               <button onClick={() => { setScreen("top"); setSelectedUni(""); setQuery(""); }} style={{ background: "none", border: "none", color: "#7c3aed", cursor: "pointer", fontSize: 12, padding: 0 }}>← トップ</button>
               <span style={{ fontSize: 13, color: "#e8e8f0", fontWeight: 600 }}>{selectedUni}</span>
+            </div>
+          )}
+          {screen === "add_course" && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+              <button onClick={() => { setScreen(selectedUni ? "courses" : "top"); setSimilarCourses([]); setDuplicateError(""); }} style={{ background: "none", border: "none", color: "#7c3aed", cursor: "pointer", fontSize: 12, padding: 0 }}>← 戻る</button>
+              <span style={{ fontSize: 13, color: "#e8e8f0", fontWeight: 600 }}>授業を追加</span>
             </div>
           )}
           {screen === "detail" && (
@@ -207,7 +254,7 @@ export default function App() {
 
       <div style={{ maxWidth: 720, margin: "0 auto", padding: "16px 24px" }}>
 
-        {/* トップ：大学検索 */}
+        {/* トップ */}
         {screen === "top" && (
           <div>
             <div style={{ textAlign: "center", padding: "32px 0 24px" }}>
@@ -218,24 +265,29 @@ export default function App() {
 
             {/* 追加ボタン */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>
-              <button onClick={() => setScreen("add_university")}
-                style={{ padding: "14px", background: "linear-gradient(135deg, #7c3aed, #4f46e5)", border: "none", borderRadius: 12, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-                <span style={{ fontSize: 24 }}>🏫</span>
-                <span>大学を追加する</span>
-              </button>
-              <button onClick={() => { setScreen("add_course"); setCourseForm({ name: "", professor: "", department: "", credits: "", university: "" }); }}
-                style={{ padding: "14px", background: "linear-gradient(135deg, #0e7490, #0f766e)", border: "none", borderRadius: 12, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-                <span style={{ fontSize: 24 }}>📚</span>
+              <button
+                onClick={() => { setScreen("add_course"); setCourseForm({ name: "", professor: "", department: "", credits: "", university: "" }); setUniInputMode("select"); }}
+                style={{ padding: "16px 12px", background: "linear-gradient(135deg, #7c3aed, #4f46e5)", border: "none", borderRadius: 12, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+                <span style={{ fontSize: 26 }}>📚</span>
                 <span>授業を追加する</span>
+                <span style={{ fontSize: 11, fontWeight: 400, opacity: 0.8 }}>口コミを投稿する前に</span>
+              </button>
+              <button
+                onClick={() => { setScreen("add_course"); setCourseForm({ name: "", professor: "", department: "", credits: "", university: "" }); setUniInputMode("new"); }}
+                style={{ padding: "16px 12px", background: "linear-gradient(135deg, #0e7490, #0f766e)", border: "none", borderRadius: 12, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+                <span style={{ fontSize: 26 }}>🏫</span>
+                <span>大学を追加する</span>
+                <span style={{ fontSize: 11, fontWeight: 400, opacity: 0.8 }}>まだない大学はこちら</span>
               </button>
             </div>
 
-            <div style={{ position: "relative", marginBottom: 20 }}>
+            <div style={{ position: "relative", marginBottom: 16 }}>
               <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: 16, opacity: 0.5 }}>🔍</span>
               <input value={uniQuery} onChange={(e) => setUniQuery(e.target.value)}
                 placeholder="大学名を検索..."
                 style={{ width: "100%", boxSizing: "border-box", padding: "12px 12px 12px 38px", background: "#1e1e30", border: "1px solid #3a3a5c", borderRadius: 10, color: "#e8e8f0", fontSize: 14, outline: "none" }} />
             </div>
+
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {filteredUnis.length === 0 ? (
                 <div style={{ textAlign: "center", color: "#6666aa", padding: "30px 0", fontSize: 14 }}>
@@ -278,7 +330,7 @@ export default function App() {
                   style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px 10px 38px", background: "#1e1e30", border: "1px solid #3a3a5c", borderRadius: 10, color: "#e8e8f0", fontSize: 14, outline: "none" }} />
               </div>
               <button
-                onClick={() => { setScreen("add_course"); setCourseForm({ ...courseForm, university: selectedUni }); }}
+                onClick={() => { setScreen("add_course"); setCourseForm({ name: "", professor: "", department: "", credits: "", university: selectedUni }); setUniInputMode("select"); setSimilarCourses([]); setDuplicateError(""); }}
                 style={{ padding: "10px 14px", background: "#7c3aed", border: "none", borderRadius: 10, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
                 ＋ 授業追加
               </button>
@@ -320,7 +372,7 @@ export default function App() {
               })}
               {filteredCourses.length === 0 && (
                 <div style={{ textAlign: "center", color: "#6666aa", padding: "40px 0" }}>
-                  授業がまだありません。「＋ 授業追加」から追加してみましょう！
+                  授業がまだありません。「＋ 授業追加」から追加しましょう！
                 </div>
               )}
             </div>
@@ -333,13 +385,58 @@ export default function App() {
             <div style={{ background: "#1a1a2e", border: "1px solid #2a2a4a", borderRadius: 12, padding: "16px" }}>
               <div style={{ fontSize: 15, color: "#fff", fontWeight: 700, marginBottom: 16 }}>📚 授業を追加する</div>
 
+              {/* 大学選択 */}
               <label style={labelStyle}>大学名 *</label>
-              <input value={courseForm.university} onChange={(e) => setCourseForm({ ...courseForm, university: e.target.value })}
-                placeholder="例：早稲田大学" style={inputStyle} />
+              <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                <button onClick={() => setUniInputMode("select")}
+                  style={{ flex: 1, padding: "6px", border: "1px solid", borderRadius: 6, cursor: "pointer", fontSize: 12, background: uniInputMode === "select" ? "#7c3aed" : "#12121e", borderColor: uniInputMode === "select" ? "#7c3aed" : "#3a3a5c", color: uniInputMode === "select" ? "#fff" : "#8888aa" }}>
+                  既存から選ぶ
+                </button>
+                <button onClick={() => setUniInputMode("new")}
+                  style={{ flex: 1, padding: "6px", border: "1px solid", borderRadius: 6, cursor: "pointer", fontSize: 12, background: uniInputMode === "new" ? "#7c3aed" : "#12121e", borderColor: uniInputMode === "new" ? "#7c3aed" : "#3a3a5c", color: uniInputMode === "new" ? "#fff" : "#8888aa" }}>
+                  新しく追加
+                </button>
+              </div>
 
+              {uniInputMode === "select" ? (
+                <select value={courseForm.university} onChange={(e) => setCourseForm({ ...courseForm, university: e.target.value })}
+                  style={{ ...inputStyle, appearance: "none" as const }}>
+                  <option value="">大学を選択してください</option>
+                  {universities.map(u => <option key={u} value={u}>{u}</option>)}
+                </select>
+              ) : (
+                <input value={courseForm.university} onChange={(e) => setCourseForm({ ...courseForm, university: e.target.value })}
+                  placeholder="例：早稲田大学（正式名称で入力）" style={inputStyle} />
+              )}
+
+              {/* 授業名 */}
               <label style={labelStyle}>授業名 *</label>
               <input value={courseForm.name} onChange={(e) => setCourseForm({ ...courseForm, name: e.target.value })}
-                placeholder="例：経営学概論" style={inputStyle} />
+                placeholder="例：経営学概論" style={{ ...inputStyle, borderColor: duplicateError ? "#ef4444" : "#3a3a5c" }} />
+
+              {/* 重複エラー */}
+              {duplicateError && (
+                <div style={{ background: "#450a0a", border: "1px solid #ef4444", borderRadius: 8, padding: "10px 12px", marginBottom: 8, fontSize: 12, color: "#ef4444" }}>
+                  ⚠️ {duplicateError}
+                </div>
+              )}
+
+              {/* 類似授業サジェスト */}
+              {similarCourses.length > 0 && (
+                <div style={{ background: "#1c1a00", border: "1px solid #eab308", borderRadius: 8, padding: "10px 12px", marginBottom: 8 }}>
+                  <div style={{ fontSize: 12, color: "#eab308", fontWeight: 600, marginBottom: 6 }}>⚠️ 似た授業がすでに登録されています。これじゃないですか？</div>
+                  {similarCourses.map(c => (
+                    <div key={c.id}
+                      onClick={() => { setSelected(c); setSelectedUni(c.university); setScreen("detail"); }}
+                      style={{ fontSize: 12, color: "#e8e8f0", padding: "6px 8px", background: "#12121e", borderRadius: 6, cursor: "pointer", marginBottom: 4 }}>
+                      <span style={{ fontWeight: 600 }}>{c.name}</span>
+                      <span style={{ color: "#8888aa" }}> / {c.professor}</span>
+                      <span style={{ color: "#7c3aed", marginLeft: 8, fontSize: 11 }}>→ この授業を見る</span>
+                    </div>
+                  ))}
+                  <div style={{ fontSize: 11, color: "#8888aa", marginTop: 6 }}>違う場合はそのまま追加できます</div>
+                </div>
+              )}
 
               <label style={labelStyle}>教員名 *</label>
               <input value={courseForm.professor} onChange={(e) => setCourseForm({ ...courseForm, professor: e.target.value })}
@@ -357,64 +454,14 @@ export default function App() {
               </select>
 
               <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-                <button onClick={() => setScreen("courses")}
+                <button onClick={() => { setScreen(selectedUni ? "courses" : "top"); setSimilarCourses([]); setDuplicateError(""); }}
                   style={{ flex: 1, padding: "10px", background: "none", border: "1px solid #3a3a5c", borderRadius: 6, color: "#8888aa", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
                   キャンセル
                 </button>
                 <button onClick={submitCourse}
-                  disabled={addingCourse || !courseForm.name || !courseForm.professor || !courseForm.university || !courseForm.credits}
-                  style={{ flex: 2, padding: "10px", background: "#7c3aed", border: "none", borderRadius: 6, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", opacity: addingCourse ? 0.5 : 1 }}>
+                  disabled={addingCourse || !courseForm.name || !courseForm.professor || !courseForm.university || !courseForm.credits || !!duplicateError}
+                  style={{ flex: 2, padding: "10px", background: "#7c3aed", border: "none", borderRadius: 6, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", opacity: (addingCourse || !!duplicateError) ? 0.5 : 1 }}>
                   {addingCourse ? "追加中..." : "授業を追加する"}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-
-        {/* 大学追加フォーム */}
-        {screen === "add_university" && (
-          <div>
-            <div style={{ background: "#1a1a2e", border: "1px solid #2a2a4a", borderRadius: 12, padding: "16px" }}>
-              <div style={{ fontSize: 15, color: "#fff", fontWeight: 700, marginBottom: 16 }}>🏫 大学を追加する</div>
-
-              {uniAdded && (
-                <div style={{ background: "#14532d", border: "1px solid #22c55e", borderRadius: 8, padding: "10px 14px", marginBottom: 12, fontSize: 13, color: "#22c55e" }}>
-                  ✅ 大学を追加しました！授業も追加しましょう。
-                </div>
-              )}
-
-              <label style={labelStyle}>大学名 *</label>
-              <input value={uniForm.university} onChange={(e) => setUniForm({ university: e.target.value })}
-                placeholder="例：早稲田大学" style={inputStyle} />
-
-              <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-                <button onClick={() => setScreen("top")}
-                  style={{ flex: 1, padding: "10px", background: "none", border: "1px solid #3a3a5c", borderRadius: 6, color: "#8888aa", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
-                  キャンセル
-                </button>
-                <button
-                  onClick={async () => {
-                    if (!uniForm.university) return;
-                    setAddingUni(true);
-                    await supabase.from("courses").insert({
-                      name: "（準備中）",
-                      professor: "（未設定）",
-                      department: null,
-                      credits: 2,
-                      university: uniForm.university,
-                      tags: "",
-                    });
-                    await fetchAllCourses();
-                    setSelectedUni(uniForm.university);
-                    setUniForm({ university: "" });
-                    setAddingUni(false);
-                    setUniAdded(true);
-                    setTimeout(() => { setUniAdded(false); setScreen("courses"); }, 2000);
-                  }}
-                  disabled={addingUni || !uniForm.university}
-                  style={{ flex: 2, padding: "10px", background: "#7c3aed", border: "none", borderRadius: 6, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", opacity: addingUni ? 0.5 : 1 }}>
-                  {addingUni ? "追加中..." : "大学を追加する"}
                 </button>
               </div>
             </div>
