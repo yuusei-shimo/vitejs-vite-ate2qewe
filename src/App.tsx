@@ -6,6 +6,12 @@ const supabase = createClient(
   import.meta.env.VITE_SUPABASE_ANON_KEY
 );
 
+interface User {
+  id: string;
+  email: string;
+  user_metadata: { full_name?: string; avatar_url?: string };
+}
+
 interface Comment {
   id: number;
   course_id: number;
@@ -18,6 +24,7 @@ interface Comment {
   attendance_type: string;
   passed: boolean;
   text: string;
+  user_id?: string;
 }
 
 interface Course {
@@ -69,7 +76,6 @@ const BarChart = ({ items, color }: { items: { val: string; pct: number }[]; col
   </div>
 );
 
-// 文字列の類似度（簡易版）
 const similarity = (a: string, b: string) => {
   const s1 = a.toLowerCase().replace(/\s/g, "");
   const s2 = b.toLowerCase().replace(/\s/g, "");
@@ -81,6 +87,8 @@ const similarity = (a: string, b: string) => {
 };
 
 export default function App() {
+  const [user, setUser] = useState<User | null>(null);
+  const [showLoginModal, setShowLoginModal] = useState(false);
   const [screen, setScreen] = useState<Screen>("top");
   const [uniQuery, setUniQuery] = useState("");
   const [selectedUni, setSelectedUni] = useState("");
@@ -96,7 +104,6 @@ export default function App() {
   const [duplicateError, setDuplicateError] = useState("");
   const [similarCourses, setSimilarCourses] = useState<Course[]>([]);
   const [uniInputMode, setUniInputMode] = useState<"select" | "new">("select");
-
   const [form, setForm] = useState({
     year: "", gpa: "", ease_rating: 0, workload_rating: 0,
     exam_type: "", material_allowed: "", attendance_type: "", passed: "", text: "",
@@ -105,31 +112,32 @@ export default function App() {
     name: "", professor: "", department: "", credits: "", university: "",
   });
 
-  useEffect(() => { fetchAllCourses(); fetchAllComments(); }, []);
+  useEffect(() => {
+    fetchAllCourses();
+    fetchAllComments();
+    // ログイン状態を取得
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user as User ?? null);
+    });
+    // ログイン状態の変化を監視
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user as User ?? null);
+      if (session) setShowLoginModal(false);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
   useEffect(() => { if (selected) fetchComments(selected.id); }, [selected]);
 
-  // 授業名入力時に類似授業をチェック
   useEffect(() => {
     if (!courseForm.name || courseForm.name.length < 2 || !courseForm.university) {
-      setSimilarCourses([]);
-      setDuplicateError("");
-      return;
+      setSimilarCourses([]); setDuplicateError(""); return;
     }
     const uniCourses = allCourses.filter(c => c.university === courseForm.university);
-    // 完全一致チェック
-    const exact = uniCourses.find(c =>
-      c.name === courseForm.name && c.professor === courseForm.professor
-    );
-    if (exact) {
-      setDuplicateError("この授業名と教員名の組み合わせはすでに登録されています。");
-      setSimilarCourses([]);
-      return;
-    }
+    const exact = uniCourses.find(c => c.name === courseForm.name && c.professor === courseForm.professor);
+    if (exact) { setDuplicateError("この授業名と教員名の組み合わせはすでに登録されています。"); setSimilarCourses([]); return; }
     setDuplicateError("");
-    // 類似授業チェック
-    const similar = uniCourses.filter(c =>
-      c.name !== courseForm.name && similarity(c.name, courseForm.name) > 0.5
-    ).slice(0, 3);
+    const similar = uniCourses.filter(c => c.name !== courseForm.name && similarity(c.name, courseForm.name) > 0.5).slice(0, 3);
     setSimilarCourses(similar);
   }, [courseForm.name, courseForm.professor, courseForm.university, allCourses]);
 
@@ -149,16 +157,34 @@ export default function App() {
     setComments(data || []);
   };
 
+  const loginWithGoogle = async () => {
+    await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: window.location.href },
+    });
+  };
+
+  const logout = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+  };
+
+  // 投稿実績があるかチェック（広告非表示の条件）
+  const hasContribution = user && allComments.some(c => c.user_id === user.id);
+
+  const requireLogin = (action: () => void) => {
+    if (!user) { setShowLoginModal(true); return; }
+    action();
+  };
+
   const submitCourse = async () => {
     if (!courseForm.name || !courseForm.professor || !courseForm.university || !courseForm.credits || duplicateError) return;
     setAddingCourse(true);
     await supabase.from("courses").insert({
-      name: courseForm.name,
-      professor: courseForm.professor,
+      name: courseForm.name, professor: courseForm.professor,
       department: courseForm.department || null,
       credits: parseInt(courseForm.credits),
-      university: courseForm.university,
-      tags: "",
+      university: courseForm.university, tags: "",
     });
     const uni = courseForm.university;
     setCourseForm({ name: "", professor: "", department: "", credits: "", university: "" });
@@ -182,6 +208,7 @@ export default function App() {
       attendance_type: form.attendance_type,
       passed: form.passed === "true",
       text: form.text || null,
+      user_id: user?.id || null,
     });
     setForm({ year: "", gpa: "", ease_rating: 0, workload_rating: 0, exam_type: "", material_allowed: "", attendance_type: "", passed: "", text: "" });
     await fetchComments(selected.id);
@@ -209,7 +236,6 @@ export default function App() {
     c.university === selectedUni &&
     (c.name.includes(query) || c.professor.includes(query) || (c.department || "").includes(query) || (c.tags || "").includes(query))
   );
-
   const stats = selected ? getCourseStats(selected.id) : null;
 
   const inputStyle = {
@@ -221,30 +247,65 @@ export default function App() {
 
   return (
     <div style={{ fontFamily: "'Hiragino Sans', 'Noto Sans JP', sans-serif", background: "#0f0f13", minHeight: "100vh", color: "#e8e8f0" }}>
-      {/* Header */}
-      <div style={{ background: "linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)", borderBottom: "1px solid #2a2a4a", padding: "20px 24px 16px" }}>
-        <div style={{ maxWidth: 720, margin: "0 auto" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-            <span style={{ fontSize: 22, cursor: "pointer" }} onClick={() => { setScreen("top"); setSelectedUni(""); setSelected(null); setQuery(""); }}>📖</span>
-            <h1 onClick={() => { setScreen("top"); setSelectedUni(""); setSelected(null); setQuery(""); }}
-              style={{ margin: 0, fontSize: 20, fontWeight: 700, color: "#fff", cursor: "pointer" }}>裏シラバス</h1>
-            <span style={{ fontSize: 11, background: "#7c3aed", color: "#fff", padding: "2px 8px", borderRadius: 20, fontWeight: 600 }}>BETA</span>
+
+      {/* ログインモーダル */}
+      {showLoginModal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
+          <div style={{ background: "#1a1a2e", border: "1px solid #2a2a4a", borderRadius: 16, padding: 28, maxWidth: 360, width: "90%", textAlign: "center" }}>
+            <div style={{ fontSize: 32, marginBottom: 12 }}>🔐</div>
+            <h3 style={{ margin: "0 0 8px", color: "#fff", fontSize: 18 }}>ログインが必要です</h3>
+            <p style={{ margin: "0 0 20px", color: "#8888aa", fontSize: 13 }}>口コミの投稿・授業の追加にはGoogleアカウントでのログインが必要です</p>
+            <button onClick={loginWithGoogle}
+              style={{ width: "100%", padding: "12px", background: "#fff", border: "none", borderRadius: 8, color: "#1a1a2e", fontSize: 14, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 10 }}>
+              <span style={{ fontSize: 18 }}>G</span> Googleでログイン
+            </button>
+            <button onClick={() => setShowLoginModal(false)}
+              style={{ width: "100%", padding: "10px", background: "none", border: "1px solid #3a3a5c", borderRadius: 8, color: "#8888aa", fontSize: 13, cursor: "pointer" }}>
+              キャンセル
+            </button>
           </div>
-          {screen === "top" && <p style={{ margin: "4px 0 0", fontSize: 12, color: "#8888aa" }}>先輩たちのリアルな口コミで、賢く履修選択</p>}
+        </div>
+      )}
+
+      {/* Header */}
+      <div style={{ background: "linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)", borderBottom: "1px solid #2a2a4a", padding: "16px 24px" }}>
+        <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 20, cursor: "pointer" }} onClick={() => { setScreen("top"); setSelectedUni(""); setSelected(null); setQuery(""); }}>📖</span>
+            <h1 onClick={() => { setScreen("top"); setSelectedUni(""); setSelected(null); setQuery(""); }}
+              style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#fff", cursor: "pointer" }}>裏シラバス</h1>
+            <span style={{ fontSize: 10, background: "#7c3aed", color: "#fff", padding: "2px 6px", borderRadius: 20, fontWeight: 600 }}>BETA</span>
+          </div>
+          {/* ログインボタン */}
+          {user ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              {hasContribution && <span style={{ fontSize: 10, background: "#14532d", color: "#22c55e", padding: "2px 8px", borderRadius: 20, fontWeight: 600 }}>広告なし</span>}
+              <img src={user.user_metadata.avatar_url} style={{ width: 28, height: 28, borderRadius: "50%", border: "2px solid #7c3aed" }} />
+              <button onClick={logout} style={{ background: "none", border: "1px solid #3a3a5c", borderRadius: 6, color: "#8888aa", fontSize: 11, padding: "4px 8px", cursor: "pointer" }}>ログアウト</button>
+            </div>
+          ) : (
+            <button onClick={loginWithGoogle}
+              style={{ padding: "6px 14px", background: "#7c3aed", border: "none", borderRadius: 8, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+              ログイン
+            </button>
+          )}
+        </div>
+        {/* パンくず */}
+        <div style={{ maxWidth: 720, margin: "8px auto 0" }}>
           {screen === "courses" && (
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <button onClick={() => { setScreen("top"); setSelectedUni(""); setQuery(""); }} style={{ background: "none", border: "none", color: "#7c3aed", cursor: "pointer", fontSize: 12, padding: 0 }}>← トップ</button>
               <span style={{ fontSize: 13, color: "#e8e8f0", fontWeight: 600 }}>{selectedUni}</span>
             </div>
           )}
           {screen === "add_course" && (
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <button onClick={() => { setScreen(selectedUni ? "courses" : "top"); setSimilarCourses([]); setDuplicateError(""); }} style={{ background: "none", border: "none", color: "#7c3aed", cursor: "pointer", fontSize: 12, padding: 0 }}>← 戻る</button>
               <span style={{ fontSize: 13, color: "#e8e8f0", fontWeight: 600 }}>授業を追加</span>
             </div>
           )}
           {screen === "detail" && (
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <button onClick={() => { setScreen("courses"); setSelected(null); }} style={{ background: "none", border: "none", color: "#7c3aed", cursor: "pointer", fontSize: 12, padding: 0 }}>← {selectedUni}</button>
               <span style={{ fontSize: 13, color: "#e8e8f0", fontWeight: 600 }}>{selected?.name}</span>
             </div>
@@ -252,39 +313,52 @@ export default function App() {
         </div>
       </div>
 
+      {/* 広告バナー（未投稿ユーザーのみ） */}
+      {!hasContribution && (
+        <div style={{ background: "#1a1a2e", borderBottom: "1px solid #2a2a4a", padding: "8px 24px", textAlign: "center" }}>
+          <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ fontSize: 11, color: "#6666aa" }}>📢 広告スペース</div>
+            {!user && (
+              <div style={{ fontSize: 11, color: "#7c3aed", cursor: "pointer" }} onClick={() => setShowLoginModal(true)}>
+                口コミを投稿すると広告が消えます →
+              </div>
+            )}
+            {user && !hasContribution && (
+              <div style={{ fontSize: 11, color: "#7c3aed" }}>口コミを1件投稿すると広告が消えます！</div>
+            )}
+          </div>
+        </div>
+      )}
+
       <div style={{ maxWidth: 720, margin: "0 auto", padding: "16px 24px" }}>
 
         {/* トップ */}
         {screen === "top" && (
           <div>
-            <div style={{ textAlign: "center", padding: "32px 0 24px" }}>
+            <div style={{ textAlign: "center", padding: "24px 0 20px" }}>
               <div style={{ fontSize: 40, marginBottom: 12 }}>🎓</div>
               <h2 style={{ margin: "0 0 8px", fontSize: 22, color: "#fff" }}>大学を選んでください</h2>
-              <p style={{ margin: 0, fontSize: 13, color: "#8888aa" }}>授業の口コミ・楽単情報を検索できます</p>
+              <p style={{ margin: 0, fontSize: 13, color: "#8888aa" }}>先輩たちのリアルな口コミで、賢く履修選択</p>
             </div>
 
-            {/* 追加ボタン */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>
-              <button
-                onClick={() => { setScreen("add_course"); setCourseForm({ name: "", professor: "", department: "", credits: "", university: "" }); setUniInputMode("select"); }}
+              <button onClick={() => requireLogin(() => { setScreen("add_course"); setCourseForm({ name: "", professor: "", department: "", credits: "", university: "" }); setUniInputMode("select"); })}
                 style={{ padding: "16px 12px", background: "linear-gradient(135deg, #7c3aed, #4f46e5)", border: "none", borderRadius: 12, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
                 <span style={{ fontSize: 26 }}>📚</span>
                 <span>授業を追加する</span>
-                <span style={{ fontSize: 11, fontWeight: 400, opacity: 0.8 }}>口コミを投稿する前に</span>
+                <span style={{ fontSize: 11, fontWeight: 400, opacity: 0.8 }}>要ログイン</span>
               </button>
-              <button
-                onClick={() => { setScreen("add_course"); setCourseForm({ name: "", professor: "", department: "", credits: "", university: "" }); setUniInputMode("new"); }}
+              <button onClick={() => requireLogin(() => { setScreen("add_course"); setCourseForm({ name: "", professor: "", department: "", credits: "", university: "" }); setUniInputMode("new"); })}
                 style={{ padding: "16px 12px", background: "linear-gradient(135deg, #0e7490, #0f766e)", border: "none", borderRadius: 12, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
                 <span style={{ fontSize: 26 }}>🏫</span>
                 <span>大学を追加する</span>
-                <span style={{ fontSize: 11, fontWeight: 400, opacity: 0.8 }}>まだない大学はこちら</span>
+                <span style={{ fontSize: 11, fontWeight: 400, opacity: 0.8 }}>要ログイン</span>
               </button>
             </div>
 
             <div style={{ position: "relative", marginBottom: 16 }}>
               <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: 16, opacity: 0.5 }}>🔍</span>
-              <input value={uniQuery} onChange={(e) => setUniQuery(e.target.value)}
-                placeholder="大学名を検索..."
+              <input value={uniQuery} onChange={(e) => setUniQuery(e.target.value)} placeholder="大学名を検索..."
                 style={{ width: "100%", boxSizing: "border-box", padding: "12px 12px 12px 38px", background: "#1e1e30", border: "1px solid #3a3a5c", borderRadius: 10, color: "#e8e8f0", fontSize: 14, outline: "none" }} />
             </div>
 
@@ -297,8 +371,7 @@ export default function App() {
                 const uniCourses = allCourses.filter(c => c.university === uni);
                 const uniComments = allComments.filter(c => uniCourses.some(course => course.id === c.course_id));
                 return (
-                  <div key={uni}
-                    onClick={() => { setSelectedUni(uni); setScreen("courses"); setQuery(""); setCourseAdded(false); }}
+                  <div key={uni} onClick={() => { setSelectedUni(uni); setScreen("courses"); setQuery(""); setCourseAdded(false); }}
                     style={{ background: "#1a1a2e", border: "1px solid #2a2a4a", borderRadius: 12, padding: "16px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}
                     onMouseEnter={(e) => (e.currentTarget.style.borderColor = "#7c3aed")}
                     onMouseLeave={(e) => (e.currentTarget.style.borderColor = "#2a2a4a")}>
@@ -318,19 +391,15 @@ export default function App() {
         {screen === "courses" && (
           <div>
             {courseAdded && (
-              <div style={{ background: "#14532d", border: "1px solid #22c55e", borderRadius: 8, padding: "10px 14px", marginBottom: 12, fontSize: 13, color: "#22c55e" }}>
-                ✅ 授業を追加しました！
-              </div>
+              <div style={{ background: "#14532d", border: "1px solid #22c55e", borderRadius: 8, padding: "10px 14px", marginBottom: 12, fontSize: 13, color: "#22c55e" }}>✅ 授業を追加しました！</div>
             )}
             <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
               <div style={{ position: "relative", flex: 1 }}>
                 <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: 16, opacity: 0.5 }}>🔍</span>
-                <input value={query} onChange={(e) => setQuery(e.target.value)}
-                  placeholder="授業名・教授名で検索..."
+                <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="授業名・教授名で検索..."
                   style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px 10px 38px", background: "#1e1e30", border: "1px solid #3a3a5c", borderRadius: 10, color: "#e8e8f0", fontSize: 14, outline: "none" }} />
               </div>
-              <button
-                onClick={() => { setScreen("add_course"); setCourseForm({ name: "", professor: "", department: "", credits: "", university: selectedUni }); setUniInputMode("select"); setSimilarCourses([]); setDuplicateError(""); }}
+              <button onClick={() => requireLogin(() => { setScreen("add_course"); setCourseForm({ name: "", professor: "", department: "", credits: "", university: selectedUni }); setUniInputMode("select"); setSimilarCourses([]); setDuplicateError(""); })}
                 style={{ padding: "10px 14px", background: "#7c3aed", border: "none", borderRadius: 10, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
                 ＋ 授業追加
               </button>
@@ -340,8 +409,7 @@ export default function App() {
               {filteredCourses.map((course) => {
                 const s = getCourseStats(course.id);
                 return (
-                  <div key={course.id}
-                    onClick={() => { setSelected(course); setScreen("detail"); setActiveTab("data"); }}
+                  <div key={course.id} onClick={() => { setSelected(course); setScreen("detail"); setActiveTab("data"); }}
                     style={{ background: "#1a1a2e", border: "1px solid #2a2a4a", borderRadius: 12, padding: "14px 16px", cursor: "pointer" }}
                     onMouseEnter={(e) => (e.currentTarget.style.borderColor = "#7c3aed")}
                     onMouseLeave={(e) => (e.currentTarget.style.borderColor = "#2a2a4a")}>
@@ -371,9 +439,7 @@ export default function App() {
                 );
               })}
               {filteredCourses.length === 0 && (
-                <div style={{ textAlign: "center", color: "#6666aa", padding: "40px 0" }}>
-                  授業がまだありません。「＋ 授業追加」から追加しましょう！
-                </div>
+                <div style={{ textAlign: "center", color: "#6666aa", padding: "40px 0" }}>授業がまだありません。「＋ 授業追加」から追加しましょう！</div>
               )}
             </div>
           </div>
@@ -385,7 +451,6 @@ export default function App() {
             <div style={{ background: "#1a1a2e", border: "1px solid #2a2a4a", borderRadius: 12, padding: "16px" }}>
               <div style={{ fontSize: 15, color: "#fff", fontWeight: 700, marginBottom: 16 }}>📚 授業を追加する</div>
 
-              {/* 大学選択 */}
               <label style={labelStyle}>大学名 *</label>
               <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
                 <button onClick={() => setUniInputMode("select")}
@@ -409,25 +474,21 @@ export default function App() {
                   placeholder="例：早稲田大学（正式名称で入力）" style={inputStyle} />
               )}
 
-              {/* 授業名 */}
               <label style={labelStyle}>授業名 *</label>
               <input value={courseForm.name} onChange={(e) => setCourseForm({ ...courseForm, name: e.target.value })}
                 placeholder="例：経営学概論" style={{ ...inputStyle, borderColor: duplicateError ? "#ef4444" : "#3a3a5c" }} />
 
-              {/* 重複エラー */}
               {duplicateError && (
                 <div style={{ background: "#450a0a", border: "1px solid #ef4444", borderRadius: 8, padding: "10px 12px", marginBottom: 8, fontSize: 12, color: "#ef4444" }}>
                   ⚠️ {duplicateError}
                 </div>
               )}
 
-              {/* 類似授業サジェスト */}
               {similarCourses.length > 0 && (
                 <div style={{ background: "#1c1a00", border: "1px solid #eab308", borderRadius: 8, padding: "10px 12px", marginBottom: 8 }}>
                   <div style={{ fontSize: 12, color: "#eab308", fontWeight: 600, marginBottom: 6 }}>⚠️ 似た授業がすでに登録されています。これじゃないですか？</div>
                   {similarCourses.map(c => (
-                    <div key={c.id}
-                      onClick={() => { setSelected(c); setSelectedUni(c.university); setScreen("detail"); }}
+                    <div key={c.id} onClick={() => { setSelected(c); setSelectedUni(c.university); setScreen("detail"); }}
                       style={{ fontSize: 12, color: "#e8e8f0", padding: "6px 8px", background: "#12121e", borderRadius: 6, cursor: "pointer", marginBottom: 4 }}>
                       <span style={{ fontWeight: 600 }}>{c.name}</span>
                       <span style={{ color: "#8888aa" }}> / {c.professor}</span>
@@ -535,67 +596,80 @@ export default function App() {
 
               {activeTab === "comments" && (
                 <div>
-                  <div style={{ background: "#12121e", borderRadius: 8, padding: 12, marginBottom: 16 }}>
-                    <div style={{ fontSize: 13, color: "#7c3aed", fontWeight: 700, marginBottom: 12 }}>口コミを投稿する</div>
-
-                    <label style={labelStyle}>受講年度 *</label>
-                    <select value={form.year} onChange={(e) => setForm({ ...form, year: e.target.value })} style={{ ...inputStyle, appearance: "none" as const }}>
-                      <option value="">選択してください</option>
-                      {["25年度", "24年度", "23年度", "22年度", "21年度以前"].map(y => <option key={y} value={y}>{y}</option>)}
-                    </select>
-
-                    <label style={labelStyle}>あなたのGPA *</label>
-                    <input value={form.gpa} onChange={(e) => setForm({ ...form, gpa: e.target.value })} placeholder="例：3.2" style={inputStyle} />
-
-                    <label style={labelStyle}>楽単レベル * （★5が一番楽単）</label>
-                    <div style={{ marginBottom: 12 }}>
-                      <StarRating value={form.ease_rating} onChange={(v) => setForm({ ...form, ease_rating: v })} />
+                  {/* 投稿フォーム or ログイン促進 */}
+                  {!user ? (
+                    <div style={{ background: "#12121e", borderRadius: 8, padding: 20, marginBottom: 16, textAlign: "center" }}>
+                      <div style={{ fontSize: 24, marginBottom: 8 }}>🔐</div>
+                      <div style={{ fontSize: 14, color: "#e8e8f0", marginBottom: 4, fontWeight: 600 }}>口コミを投稿するにはログインが必要です</div>
+                      <div style={{ fontSize: 12, color: "#8888aa", marginBottom: 16 }}>投稿すると広告も非表示になります！</div>
+                      <button onClick={loginWithGoogle}
+                        style={{ padding: "10px 24px", background: "#7c3aed", border: "none", borderRadius: 8, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                        Googleでログインして投稿する
+                      </button>
                     </div>
+                  ) : (
+                    <div style={{ background: "#12121e", borderRadius: 8, padding: 12, marginBottom: 16 }}>
+                      <div style={{ fontSize: 13, color: "#7c3aed", fontWeight: 700, marginBottom: 12 }}>口コミを投稿する</div>
 
-                    <label style={labelStyle}>課題の少なさ＆テストの易しさ * （★5が一番楽）</label>
-                    <div style={{ marginBottom: 12 }}>
-                      <StarRating value={form.workload_rating} onChange={(v) => setForm({ ...form, workload_rating: v })} />
+                      <label style={labelStyle}>受講年度 *</label>
+                      <select value={form.year} onChange={(e) => setForm({ ...form, year: e.target.value })} style={{ ...inputStyle, appearance: "none" as const }}>
+                        <option value="">選択してください</option>
+                        {["25年度", "24年度", "23年度", "22年度", "21年度以前"].map(y => <option key={y} value={y}>{y}</option>)}
+                      </select>
+
+                      <label style={labelStyle}>あなたのGPA *</label>
+                      <input value={form.gpa} onChange={(e) => setForm({ ...form, gpa: e.target.value })} placeholder="例：3.2" style={inputStyle} />
+
+                      <label style={labelStyle}>楽単レベル * （★5が一番楽単）</label>
+                      <div style={{ marginBottom: 12 }}>
+                        <StarRating value={form.ease_rating} onChange={(v) => setForm({ ...form, ease_rating: v })} />
+                      </div>
+
+                      <label style={labelStyle}>課題の少なさ＆テストの易しさ * （★5が一番楽）</label>
+                      <div style={{ marginBottom: 12 }}>
+                        <StarRating value={form.workload_rating} onChange={(v) => setForm({ ...form, workload_rating: v })} />
+                      </div>
+
+                      <label style={labelStyle}>テスト形式 *</label>
+                      <select value={form.exam_type} onChange={(e) => setForm({ ...form, exam_type: e.target.value })} style={{ ...inputStyle, appearance: "none" as const }}>
+                        <option value="">選択してください</option>
+                        {["記述式", "選択式（マークシート等）", "レポート提出", "実技・発表", "テストなし"].map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+
+                      <label style={labelStyle}>持ち込み可否 *</label>
+                      <select value={form.material_allowed} onChange={(e) => setForm({ ...form, material_allowed: e.target.value })} style={{ ...inputStyle, appearance: "none" as const }}>
+                        <option value="">選択してください</option>
+                        {["持ち込み可", "持ち込み不可", "一部可（教科書のみ等）", "該当なし（テストなしの場合）"].map(m => <option key={m} value={m}>{m}</option>)}
+                      </select>
+
+                      <label style={labelStyle}>出席確認 *</label>
+                      <select value={form.attendance_type} onChange={(e) => setForm({ ...form, attendance_type: e.target.value })} style={{ ...inputStyle, appearance: "none" as const }}>
+                        <option value="">選択してください</option>
+                        {["教員口頭", "学生証タッチのみ", "たまに確認", "自由", "オンデマンド"].map(a => <option key={a} value={a}>{a}</option>)}
+                      </select>
+
+                      <label style={labelStyle}>単位取得 *</label>
+                      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+                        {[["true", "✅ 取得"], ["false", "❌ 落単"]].map(([val, label]) => (
+                          <button key={val} onClick={() => setForm({ ...form, passed: val })}
+                            style={{ flex: 1, padding: "8px", border: "1px solid", borderRadius: 6, cursor: "pointer", fontSize: 13, fontWeight: 600, background: form.passed === val ? "#7c3aed" : "#1a1a2e", borderColor: form.passed === val ? "#7c3aed" : "#3a3a5c", color: form.passed === val ? "#fff" : "#8888aa" }}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+
+                      <label style={labelStyle}>コメント（任意）</label>
+                      <textarea value={form.text} onChange={(e) => setForm({ ...form, text: e.target.value })}
+                        placeholder="授業の感想・アドバイスなど自由に" rows={3}
+                        style={{ ...inputStyle, resize: "vertical" as const }} />
+
+                      <button onClick={submitComment}
+                        disabled={submitting || !form.year || !form.gpa || !form.ease_rating || !form.workload_rating || !form.exam_type || !form.material_allowed || !form.attendance_type || !form.passed}
+                        style={{ width: "100%", padding: "10px", background: "#7c3aed", border: "none", borderRadius: 6, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", opacity: submitting ? 0.5 : 1 }}>
+                        {submitting ? "投稿中..." : "投稿する"}
+                      </button>
                     </div>
-
-                    <label style={labelStyle}>テスト形式 *</label>
-                    <select value={form.exam_type} onChange={(e) => setForm({ ...form, exam_type: e.target.value })} style={{ ...inputStyle, appearance: "none" as const }}>
-                      <option value="">選択してください</option>
-                      {["記述式", "選択式（マークシート等）", "レポート提出", "実技・発表", "テストなし"].map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
-
-                    <label style={labelStyle}>持ち込み可否 *</label>
-                    <select value={form.material_allowed} onChange={(e) => setForm({ ...form, material_allowed: e.target.value })} style={{ ...inputStyle, appearance: "none" as const }}>
-                      <option value="">選択してください</option>
-                      {["持ち込み可", "持ち込み不可", "一部可（教科書のみ等）", "該当なし（テストなしの場合）"].map(m => <option key={m} value={m}>{m}</option>)}
-                    </select>
-
-                    <label style={labelStyle}>出席確認 *</label>
-                    <select value={form.attendance_type} onChange={(e) => setForm({ ...form, attendance_type: e.target.value })} style={{ ...inputStyle, appearance: "none" as const }}>
-                      <option value="">選択してください</option>
-                      {["教員口頭", "学生証タッチのみ", "たまに確認", "自由", "オンデマンド"].map(a => <option key={a} value={a}>{a}</option>)}
-                    </select>
-
-                    <label style={labelStyle}>単位取得 *</label>
-                    <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-                      {[["true", "✅ 取得"], ["false", "❌ 落単"]].map(([val, label]) => (
-                        <button key={val} onClick={() => setForm({ ...form, passed: val })}
-                          style={{ flex: 1, padding: "8px", border: "1px solid", borderRadius: 6, cursor: "pointer", fontSize: 13, fontWeight: 600, background: form.passed === val ? "#7c3aed" : "#1a1a2e", borderColor: form.passed === val ? "#7c3aed" : "#3a3a5c", color: form.passed === val ? "#fff" : "#8888aa" }}>
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-
-                    <label style={labelStyle}>コメント（任意）</label>
-                    <textarea value={form.text} onChange={(e) => setForm({ ...form, text: e.target.value })}
-                      placeholder="授業の感想・アドバイスなど自由に" rows={3}
-                      style={{ ...inputStyle, resize: "vertical" as const }} />
-
-                    <button onClick={submitComment}
-                      disabled={submitting || !form.year || !form.gpa || !form.ease_rating || !form.workload_rating || !form.exam_type || !form.material_allowed || !form.attendance_type || !form.passed}
-                      style={{ width: "100%", padding: "10px", background: "#7c3aed", border: "none", borderRadius: 6, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", opacity: submitting ? 0.5 : 1 }}>
-                      {submitting ? "投稿中..." : "投稿する"}
-                    </button>
-                  </div>
+                  )}
 
                   <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                     {comments.length === 0 ? (
