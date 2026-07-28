@@ -24,7 +24,6 @@ const C = {
 };
 
 interface User { id: string; email: string; user_metadata: { full_name?: string; avatar_url?: string }; }
-interface Profile { id: string; points: number; ad_free: boolean; is_og: boolean; og_number: number; }
 interface Comment { id: number; course_id: number; year: string; gpa: string; ease_rating: number; workload_rating: number; exam_type: string; material_allowed: string; attendance_type: string; passed: boolean; text: string; user_id?: string; }
 interface Course { id: number; name: string; professor: string; department: string; credits: number; tags: string; university: string; }
 type Screen = "top" | "courses" | "detail" | "add_course" | "terms";
@@ -73,8 +72,8 @@ const similarity = (a: string, b: string) => {
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<{ points: number; is_og: boolean; og_number: number | null; ad_free: boolean } | null>(null);
   const [showLoginModal, setShowLoginModal] = useState(false);
-  const [profile, setProfile] = useState<Profile | null>(null);
   const [showReportModal, setShowReportModal] = useState<number | null>(null);
   const [reportReason, setReportReason] = useState("");
   const [reportSent, setReportSent] = useState(false);
@@ -98,15 +97,15 @@ export default function App() {
   useEffect(() => {
     fetchAllCourses(); fetchAllComments();
     supabase.auth.getSession().then(({ data: { session } }) => {
-      const u = session?.user as User ?? null;
-      setUser(u);
-      if (u) fetchOrCreateProfile(u.id);
+      setUser(session?.user as User ?? null);
+      if (session) fetchOrCreateProfile(session.user.id);
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
-      const u = session?.user as User ?? null;
-      setUser(u);
-      if (u) { fetchOrCreateProfile(u.id); setShowLoginModal(false); }
-      else setProfile(null);
+      setUser(session?.user as User ?? null);
+      if (session) {
+        setShowLoginModal(false);
+        fetchOrCreateProfile(session.user.id);
+      }
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -129,20 +128,19 @@ export default function App() {
     setComments(data || []);
   };
   const loginWithGoogle = async () => { await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: window.location.href } }); };
+  const logout = async () => { await supabase.auth.signOut(); setUser(null); setProfile(null); };
 
   const fetchOrCreateProfile = async (userId: string) => {
     const { data: existing } = await supabase.from("profiles").select("*").eq("id", userId).single();
     if (existing) { setProfile(existing); return; }
     const { count } = await supabase.from("profiles").select("*", { count: "exact", head: true });
-    const ogCount = count || 0;
+    const ogCount = count ?? 0;
     const isOg = ogCount < 1000;
     const ogNumber = isOg ? ogCount + 1 : null;
-    const newProfile = { id: userId, points: 0, ad_free: isOg, is_og: isOg, og_number: ogNumber };
-    await supabase.from("profiles").insert(newProfile);
-    setProfile(newProfile as Profile);
+    const { data: created } = await supabase.from("profiles").insert({ id: userId, points: 0, is_og: isOg, og_number: ogNumber, ad_free: isOg }).select().single();
+    setProfile(created);
   };
-  const logout = async () => { await supabase.auth.signOut(); setUser(null); };
-  const isAdFree = profile?.ad_free || (user && allComments.some(c => c.user_id === user.id));
+  const hasContribution = profile?.ad_free || (user && allComments.some(c => c.user_id === user.id));
   const requireLogin = (action: () => void) => { if (!user) { setShowLoginModal(true); return; } action(); };
 
   const submitReport = async () => {
@@ -227,7 +225,10 @@ export default function App() {
           <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 16, padding: 28, maxWidth: 360, width: "90%", textAlign: "center" }}>
             <div style={{ fontSize: 32, marginBottom: 12 }}>🔐</div>
             <h3 style={{ margin: "0 0 8px", color: C.text, fontSize: 18 }}>ログインが必要です</h3>
-            <p style={{ margin: "0 0 20px", color: C.textMuted, fontSize: 13 }}>口コミの投稿・授業の追加にはGoogleアカウントでのログインが必要です</p>
+            <p style={{ margin: "0 0 8px", color: C.textMuted, fontSize: 13 }}>口コミの投稿・授業の追加にはGoogleアカウントでのログインが必要です</p>
+            <div style={{ background: "#fffacc", borderRadius: 8, padding: "8px 12px", marginBottom: 16, fontSize: 12, color: C.accentDark, fontWeight: 600 }}>
+              👑 先着1000名限定：OGバッジ＋永久広告なし特典！
+            </div>
             <button onClick={loginWithGoogle} style={{ width: "100%", padding: "12px", background: C.accent, border: "none", borderRadius: 8, color: C.text, fontSize: 14, fontWeight: 700, cursor: "pointer", marginBottom: 10 }}>
               G　Googleでログイン
             </button>
@@ -244,10 +245,14 @@ export default function App() {
             <span style={{ fontSize: 20, fontWeight: 700, color: C.text }}>楽単.jp</span>
           </div>
           {user ? (
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              {profile?.is_og && <span style={{ fontSize: 10, background: "#fffacc", color: C.accentDark, padding: "2px 8px", borderRadius: 20, fontWeight: 700 }}>👑 OG#{String(profile.og_number).padStart(3, "0")}</span>}
-              {isAdFree && <span style={{ fontSize: 10, background: C.greenBg, color: C.green, padding: "2px 8px", borderRadius: 20, fontWeight: 700 }}>広告なし</span>}
-              <img src={user.user_metadata.avatar_url} style={{ width: 28, height: 28, borderRadius: "50%", border: `2px solid ${C.accent}` }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              {profile?.is_og && (
+                <span style={{ fontSize: 10, background: C.accent, color: C.accentDark, padding: "2px 8px", borderRadius: 20, fontWeight: 700, border: `1px solid ${C.accentDark}` }}>
+                  👑 OG#{String(profile.og_number).padStart(3, "0")}
+                </span>
+              )}
+              {hasContribution && !profile?.is_og && <span style={{ fontSize: 10, background: C.greenBg, color: C.green, padding: "2px 8px", borderRadius: 20, fontWeight: 700 }}>広告なし</span>}
+              <img src={user.user_metadata.avatar_url} style={{ width: 28, height: 28, borderRadius: "50%", border: `2px solid ${profile?.is_og ? C.accentDark : C.accent}` }} />
               <button onClick={logout} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 6, color: C.textMuted, fontSize: 11, padding: "4px 8px", cursor: "pointer" }}>ログアウト</button>
             </div>
           ) : (
@@ -263,12 +268,12 @@ export default function App() {
       </div>
 
       {/* 広告バナー */}
-      {!isAdFree && (
+      {!hasContribution && (
         <div style={{ background: "#fffacc", borderBottom: `1px solid ${C.border}`, padding: "6px 16px" }}>
           <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 11 }}>
             <span style={{ color: C.textMuted }}>📢 広告スペース</span>
             <span style={{ color: C.accentDark, cursor: "pointer" }} onClick={() => user ? null : setShowLoginModal(true)}>
-              {user ? "口コミを1件投稿すると広告が消えます！" : "ログインして口コミを投稿すると広告が消えます →"}
+              {user ? "口コミを1件投稿すると広告が消えます！" : "先着1000名は永久広告なし！今すぐログイン →"}
             </span>
           </div>
         </div>
