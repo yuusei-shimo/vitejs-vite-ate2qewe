@@ -165,7 +165,7 @@ export default function App() {
   const filteredCourses = allCourses.filter(c => c.university === selectedUni && (c.name.includes(query) || c.professor.includes(query) || (c.department || "").includes(query) || (c.tags || "").includes(query)));
   const stats = selected ? getCourseStats(selected.id) : null;
 
-  const inputStyle = { width: "100%", boxSizing: "border-box" as const, padding: "8px 10px", background: "#fffdf0", border: `1px solid ${C.border}`, borderRadius: 6, color: C.text, fontSize: 13, outline: "none", marginBottom: 8 };
+  const inputStyle = { width: "100%", boxSizing: "border-box" as const, padding: "8px 10px", background: "#fffdf0", border: `1px solid ${C.border}`, borderRadius: 6, color: C.text, fontSize: 14, outline: "none", marginBottom: 8 };
   const labelStyle = { fontSize: 11, color: C.textMuted, marginBottom: 4, display: "block" as const };
   const cardStyle = { background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "16px", marginBottom: 12 };
 
@@ -218,7 +218,7 @@ export default function App() {
       )}
 
       {/* Header */}
-      <div style={{ background: "#fff", borderBottom: `2px solid ${C.accent}`, padding: "14px 24px" }}>
+      <div style={{ background: "#fff", borderBottom: `2px solid ${C.accent}`, padding: "14px 16px" }}>
         <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }} onClick={() => { setScreen("top"); setSelectedUni(""); setSelected(null); setQuery(""); }}>
             <span style={{ fontSize: 22 }}>📖</span>
@@ -244,7 +244,7 @@ export default function App() {
 
       {/* 広告バナー */}
       {!hasContribution && (
-        <div style={{ background: "#fffacc", borderBottom: `1px solid ${C.border}`, padding: "6px 24px" }}>
+        <div style={{ background: "#fffacc", borderBottom: `1px solid ${C.border}`, padding: "6px 16px" }}>
           <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 11 }}>
             <span style={{ color: C.textMuted }}>📢 広告スペース</span>
             <span style={{ color: C.accentDark, cursor: "pointer" }} onClick={() => user ? null : setShowLoginModal(true)}>
@@ -254,7 +254,7 @@ export default function App() {
         </div>
       )}
 
-      <div style={{ maxWidth: 720, margin: "0 auto", padding: "16px 24px" }}>
+      <div style={{ maxWidth: 720, margin: "0 auto", padding: "16px 16px" }}>
 
         {/* トップ */}
         {screen === "top" && (
@@ -262,11 +262,9 @@ export default function App() {
             <div style={{ textAlign: "center", padding: "24px 0 20px" }}>
               <div style={{ fontSize: 40, marginBottom: 10 }}>🎓</div>
               <h2 style={{ margin: "0 0 6px", fontSize: 22, color: C.text }}>楽単特化！学生の味方サイト</h2>
-              <p style={{ margin: "0 0 4px", fontSize: 13, color: C.textMuted }}>楽して単位を取る、それだけでいい。</p>
-              <p style={{ margin: 0, fontSize: 12, color: C.textLight }}>GPA1.5の僕が、落単しながら学んだ全部を詰め込んだ。</p>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, marginBottom: 20 }}>
               <button onClick={() => requireLogin(() => { setScreen("add_course"); setCourseForm({ name: "", professor: "", department: "", credits: "", university: "" }); setUniInputMode("select"); })}
                 style={{ padding: "16px 12px", background: C.accent, border: `1px solid ${C.borderStrong}`, borderRadius: 12, color: C.text, fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
                 <span style={{ fontSize: 26 }}>📚</span>
@@ -447,7 +445,7 @@ export default function App() {
               <h2 style={{ margin: "0 0 4px", fontSize: 18, color: C.text }}>{selected.name}</h2>
               <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 12 }}>{selected.professor}{selected.department ? `｜${selected.department}` : ""}｜{selected.credits}単位</div>
               {stats ? (
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
                   {[
                     { label: "楽単レベル", value: `★${stats.easeAvg}`, color: C.accentDark },
                     { label: "課題&テスト", value: `★${stats.workloadAvg}`, color: C.orange },
