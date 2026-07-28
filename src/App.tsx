@@ -6,26 +6,130 @@ const supabase = createClient(
   import.meta.env.VITE_SUPABASE_ANON_KEY
 );
 
-
-// 地域マップ
-const REGION_MAP: Record<string, string[]> = {
-  "関東": ["東京", "神奈川", "埼玉", "千葉", "茨城", "栃木", "群馬"],
-  "関西": ["大阪", "京都", "兵庫", "奈良", "滋賀", "和歌山", "三重"],
-  "東海": ["愛知", "静岡", "岐阜", "名古屋", "中部"],
-  "東北": ["宮城", "岩手", "青森", "秋田", "山形", "福島", "仙台"],
-  "北海道": ["北海道", "札幌", "函館", "旭川"],
-  "九州": ["福岡", "熊本", "鹿児島", "宮崎", "大分", "佐賀", "長崎", "沖縄", "琉球"],
-  "中国四国": ["広島", "岡山", "山口", "鳥取", "島根", "愛媛", "高知", "香川", "徳島"],
-  "北陸信越": ["新潟", "富山", "石川", "福井", "金沢", "長野"],
+// ============================
+// カラー定義
+// ============================
+const C = {
+  bg: "#fffdf0",
+  card: "#ffffff",
+  border: "#FFE566",
+  borderStrong: "#FFD700",
+  accent: "#FFD700",
+  accentDark: "#b8960a",
+  text: "#1a1a1a",
+  textMuted: "#777777",
+  textLight: "#aaaaaa",
+  green: "#16a34a",
+  greenBg: "#f0fff4",
+  red: "#dc2626",
+  redBg: "#fff5f5",
+  orange: "#ea580c",
 };
 
-// 表記ゆれ・読み仮名辞書
+// ============================
+// 大学→地域の完全マッピング
+// ============================
+const UNIVERSITY_REGION: Record<string, string> = {
+  // 北海道
+  "北海道大学": "北海道", "北海学園大学": "北海道", "札幌大学": "北海道",
+  "札幌学院大学": "北海道", "北翔大学": "北海道", "北星学園大学": "北海道",
+  "酪農学園大学": "北海道", "天使大学": "北海道", "藤女子大学": "北海道",
+  "室蘭工業大学": "北海道", "小樽商科大学": "北海道",
+  // 東北
+  "東北大学": "東北", "東北学院大学": "東北", "東北福祉大学": "東北",
+  "宮城大学": "東北", "仙台大学": "東北", "東北工業大学": "東北",
+  "岩手大学": "東北", "弘前大学": "東北", "秋田大学": "東北",
+  "山形大学": "東北", "福島大学": "東北", "東北文化学園大学": "東北",
+  // 関東（東京）
+  "東京大学": "関東", "一橋大学": "関東", "東京工業大学": "関東",
+  "早稲田大学": "関東", "慶應義塾大学": "関東", "上智大学": "関東",
+  "東京理科大学": "関東", "明治大学": "関東", "立教大学": "関東",
+  "青山学院大学": "関東", "中央大学": "関東", "法政大学": "関東",
+  "学習院大学": "関東", "日本大学": "関東", "東洋大学": "関東",
+  "駒澤大学": "関東", "専修大学": "関東", "大東文化大学": "関東",
+  "東海大学": "関東", "亜細亜大学": "関東", "帝京大学": "関東",
+  "国士舘大学": "関東", "拓殖大学": "関東", "武蔵野大学": "関東",
+  "杏林大学": "関東", "桜美林大学": "関東", "東京経済大学": "関東",
+  "東京電機大学": "関東", "工学院大学": "関東", "芝浦工業大学": "関東",
+  "東京都市大学": "関東", "順天堂大学": "関東", "日本体育大学": "関東",
+  "国際武道大学": "関東", "帝京平成大学": "関東", "東京国際大学": "関東",
+  "明星大学": "関東", "帝京科学大学": "関東", "東京造形大学": "関東",
+  "東京工芸大学": "関東", "多摩大学": "関東", "産業能率大学": "関東",
+  "東京富士大学": "関東", "立正大学": "関東", "二松學舍大学": "関東",
+  "国学院大学": "関東", "成蹊大学": "関東", "成城大学": "関東",
+  "明治学院大学": "関東", "武蔵大学": "関東", "獨協大学": "関東",
+  "玉川大学": "関東", "東京農業大学": "関東", "東京薬科大学": "関東",
+  "昭和大学": "関東", "日本医科大学": "関東", "東京医科大学": "関東",
+  "慈恵会医科大学": "関東", "北里大学": "関東", "昭和女子大学": "関東",
+  "東京女子大学": "関東", "日本女子大学": "関東", "津田塾大学": "関東",
+  "白百合女子大学": "関東", "大妻女子大学": "関東", "共立女子大学": "関東",
+  "実践女子大学": "関東", "跡見学園女子大学": "関東", "文化学園大学": "関東",
+  "嘉悦大学": "関東", "高千穂大学": "関東", "東京福祉大学": "関東",
+  "淑徳大学": "関東", "目白大学": "関東", "流通経済大学": "関東",
+  "千葉商科大学": "関東", "江戸川大学": "関東",
+  // 関東（神奈川）
+  "横浜国立大学": "関東", "横浜市立大学": "関東", "神奈川大学": "関東",
+  "関東学院大学": "関東", "神奈川工科大学": "関東", "相模女子大学": "関東",
+  "フェリス女学院大学": "関東", "鎌倉女子大学": "関東", "横浜薬科大学": "関東",
+  "松蔭大学": "関東", "桐蔭横浜大学": "関東",
+  // 関東（埼玉・千葉）
+  "埼玉大学": "関東", "埼玉学園大学": "関東", "西武文理大学": "関東",
+  "文教大学": "関東", "城西大学": "関東", "千葉大学": "関東",
+  "千葉工業大学": "関東", "千葉経済大学": "関東", "麗澤大学": "関東",
+  "敬愛大学": "関東", "明海大学": "関東", "聖徳大学": "関東",
+  "筑波大学": "関東",
+  // 北陸信越
+  "金沢大学": "北陸信越", "金沢工業大学": "北陸信越", "北陸大学": "北陸信越",
+  "新潟大学": "北陸信越", "新潟経営大学": "北陸信越",
+  // 東海
+  "名古屋大学": "東海", "名城大学": "東海", "中京大学": "東海",
+  "愛知大学": "東海", "愛知学院大学": "東海", "愛知工業大学": "東海",
+  "名古屋外国語大学": "東海", "名古屋学院大学": "東海", "名古屋商科大学": "東海",
+  "名古屋学芸大学": "東海", "至学館大学": "東海", "中部大学": "東海",
+  "静岡大学": "東海", "静岡産業大学": "東海", "常葉大学": "東海",
+  "南山大学": "東海",
+  // 関西
+  "大阪大学": "関西", "京都大学": "関西", "神戸大学": "関西",
+  "同志社大学": "関西", "立命館大学": "関西", "関西大学": "関西",
+  "関西学院大学": "関西", "近畿大学": "関西", "甲南大学": "関西",
+  "龍谷大学": "関西", "大阪市立大学": "関西", "大阪府立大学": "関西",
+  "大阪経済大学": "関西", "大阪工業大学": "関西", "大阪産業大学": "関西",
+  "大阪商業大学": "関西", "大阪電気通信大学": "関西", "大阪体育大学": "関西",
+  "追手門学院大学": "関西", "桃山学院大学": "関西", "四天王寺大学": "関西",
+  "大和大学": "関西", "阪南大学": "関西", "摂南大学": "関西",
+  "帝塚山学院大学": "関西", "京都外国語大学": "関西", "京都産業大学": "関西",
+  "京都橘大学": "関西", "京都精華大学": "関西", "京都造形芸術大学": "関西",
+  "佛教大学": "関西", "花園大学": "関西", "神戸学院大学": "関西",
+  "神戸松蔭女子学院大学": "関西", "武庫川女子大学": "関西", "甲南女子大学": "関西",
+  "天理大学": "関西", "帝塚山大学": "関西", "奈良大学": "関西",
+  "兵庫県立大学": "関西",
+  // 中国四国
+  "広島大学": "中国四国", "岡山大学": "中国四国", "広島修道大学": "中国四国",
+  "広島工業大学": "中国四国", "広島経済大学": "中国四国", "県立広島大学": "中国四国",
+  "安田女子大学": "中国四国", "岡山理科大学": "中国四国", "就実大学": "中国四国",
+  "倉敷芸術科学大学": "中国四国", "山口大学": "中国四国", "島根大学": "中国四国",
+  "鳥取大学": "中国四国", "愛媛大学": "中国四国", "高知大学": "中国四国",
+  "香川大学": "中国四国", "徳島大学": "中国四国", "松山大学": "中国四国",
+  "高知工科大学": "中国四国", "徳島文理大学": "中国四国",
+  // 九州
+  "九州大学": "九州", "福岡大学": "九州", "西南学院大学": "九州",
+  "久留米大学": "九州", "福岡工業大学": "九州", "九州産業大学": "九州",
+  "福岡県立大学": "九州", "長崎大学": "九州", "熊本大学": "九州",
+  "鹿児島大学": "九州", "宮崎大学": "九州", "大分大学": "九州",
+  "佐賀大学": "九州", "琉球大学": "九州", "沖縄国際大学": "九州",
+  "崇城大学": "九州", "熊本学園大学": "九州", "鹿児島国際大学": "九州",
+  "日本文理大学": "九州",
+};
+
+// ============================
+// 表記ゆれ・略称辞書
+// ============================
 const ALIAS_MAP: Record<string, string[]> = {
   "慶應義塾大学": ["慶応義塾大学", "慶応", "慶應", "けいおう", "ケイオウ"],
   "早稲田大学": ["早大", "わせだ", "ワセダ"],
   "東京大学": ["東大", "とうだい", "トウダイ"],
   "京都大学": ["京大", "きょうだい", "キョウダイ"],
-  "一橋大学": ["いっきょう", "ヒトツバシ"],
+  "一橋大学": ["いっきょう", "ヒトツバシ", "ひとつばし"],
   "東京工業大学": ["東工大", "とうこうだい"],
   "大阪大学": ["阪大", "はんだい"],
   "名古屋大学": ["名大", "めいだい"],
@@ -55,6 +159,7 @@ const ALIAS_MAP: Record<string, string[]> = {
 const normalizeQuery = (q: string): string => q.toLowerCase().replace(/\s/g, "");
 
 const matchUniversity = (uni: string, query: string): boolean => {
+  if (!query) return true;
   const nq = normalizeQuery(query);
   if (normalizeQuery(uni).includes(nq)) return true;
   const aliases = ALIAS_MAP[uni] || [];
@@ -63,32 +168,45 @@ const matchUniversity = (uni: string, query: string): boolean => {
 
 const matchRegion = (uni: string, region: string): boolean => {
   if (region === "全国") return true;
-  const keywords = REGION_MAP[region] || [];
-  return keywords.some(k => uni.includes(k));
+  return UNIVERSITY_REGION[uni] === region;
 };
 
-const C = {
-  bg: "#fffdf0",
-  card: "#ffffff",
-  border: "#FFE566",
-  borderStrong: "#FFD700",
-  accent: "#FFD700",
-  accentDark: "#b8960a",
-  text: "#1a1a1a",
-  textMuted: "#777777",
-  textLight: "#aaaaaa",
-  green: "#16a34a",
-  greenBg: "#f0fff4",
-  red: "#dc2626",
-  redBg: "#fff5f5",
-  orange: "#ea580c",
-};
-
-interface User { id: string; email: string; user_metadata: { full_name?: string; avatar_url?: string }; }
-interface Comment { id: number; course_id: number; year: string; gpa: string; ease_rating: number; workload_rating: number; exam_type: string; material_allowed: string; attendance_type: string; passed: boolean; text: string; user_id?: string; }
-interface Course { id: number; name: string; professor: string; department: string; credits: number; tags: string; university: string; }
+// ============================
+// 型定義
+// ============================
+interface User {
+  id: string;
+  email: string;
+  user_metadata: { full_name?: string; avatar_url?: string };
+}
+interface Comment {
+  id: number;
+  course_id: number;
+  year: string;
+  gpa: string;
+  ease_rating: number;
+  workload_rating: number;
+  exam_type: string;
+  material_allowed: string;
+  attendance_type: string;
+  passed: boolean;
+  text: string;
+  user_id?: string;
+}
+interface Course {
+  id: number;
+  name: string;
+  professor: string;
+  department: string;
+  credits: number;
+  tags: string;
+  university: string;
+}
 type Screen = "top" | "courses" | "detail" | "add_course" | "terms";
 
+// ============================
+// コンポーネント
+// ============================
 const StarRating = ({ value, onChange }: { value: number; onChange?: (v: number) => void }) => (
   <div style={{ display: "flex", gap: 4 }}>
     {Array.from({ length: 5 }).map((_, i) => (
@@ -99,6 +217,7 @@ const StarRating = ({ value, onChange }: { value: number; onChange?: (v: number)
 );
 
 const avg = (arr: number[]) => arr.length ? (arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(1) : null;
+
 const mostCommon = (arr: string[]) => {
   if (!arr.length) return [];
   const counts: Record<string, number> = {};
@@ -106,6 +225,7 @@ const mostCommon = (arr: string[]) => {
   const total = arr.length;
   return Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([val, count]) => ({ val, pct: Math.round(count / total * 100) }));
 };
+
 const BarChart = ({ items, color }: { items: { val: string; pct: number }[]; color: string }) => (
   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
     {items.map(({ val, pct }) => (
@@ -121,6 +241,7 @@ const BarChart = ({ items, color }: { items: { val: string; pct: number }[]; col
     ))}
   </div>
 );
+
 const similarity = (a: string, b: string) => {
   const s1 = a.toLowerCase().replace(/\s/g, "");
   const s2 = b.toLowerCase().replace(/\s/g, "");
@@ -131,6 +252,9 @@ const similarity = (a: string, b: string) => {
   return matches / Math.max(s1.length, s2.length);
 };
 
+// ============================
+// メインコンポーネント
+// ============================
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<{ points: number; is_og: boolean; og_number: number | null; ad_free: boolean } | null>(null);
@@ -153,21 +277,24 @@ export default function App() {
   const [courseAdded, setCourseAdded] = useState(false);
   const [duplicateError, setDuplicateError] = useState("");
   const [similarCourses, setSimilarCourses] = useState<Course[]>([]);
-  const [form, setForm] = useState({ year: "", gpa: "", ease_rating: 0, workload_rating: 0, exam_type: "", material_allowed: "", attendance_type: "", passed: "", text: "" });
-  const [courseForm, setCourseForm] = useState({ name: "", professor: "", department: "", credits: "", university: "" });
+  const [form, setForm] = useState({
+    year: "", gpa: "", ease_rating: 0, workload_rating: 0,
+    exam_type: "", material_allowed: "", attendance_type: "", passed: "", text: "",
+  });
+  const [courseForm, setCourseForm] = useState({
+    name: "", professor: "", department: "", credits: "", university: "",
+  });
 
   useEffect(() => {
-    fetchAllCourses(); fetchAllComments();
+    fetchAllCourses();
+    fetchAllComments();
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user as User ?? null);
       if (session) fetchOrCreateProfile(session.user.id);
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
       setUser(session?.user as User ?? null);
-      if (session) {
-        setShowLoginModal(false);
-        fetchOrCreateProfile(session.user.id);
-      }
+      if (session) { setShowLoginModal(false); fetchOrCreateProfile(session.user.id); }
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -175,7 +302,9 @@ export default function App() {
   useEffect(() => { if (selected) fetchComments(selected.id); }, [selected]);
 
   useEffect(() => {
-    if (!courseForm.name || courseForm.name.length < 2 || !courseForm.university) { setSimilarCourses([]); setDuplicateError(""); return; }
+    if (!courseForm.name || courseForm.name.length < 2 || !courseForm.university) {
+      setSimilarCourses([]); setDuplicateError(""); return;
+    }
     const uniCourses = allCourses.filter(c => c.university === courseForm.university);
     const exact = uniCourses.find(c => c.name === courseForm.name && c.professor === courseForm.professor);
     if (exact) { setDuplicateError("この授業名と教員名の組み合わせはすでに登録されています。"); setSimilarCourses([]); return; }
@@ -189,8 +318,6 @@ export default function App() {
     const { data } = await supabase.from("comments").select("*").eq("course_id", courseId).order("id", { ascending: false });
     setComments(data || []);
   };
-  const loginWithGoogle = async () => { await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: window.location.href } }); };
-  const logout = async () => { await supabase.auth.signOut(); setUser(null); setProfile(null); };
 
   const fetchOrCreateProfile = async (userId: string) => {
     const { data: existing } = await supabase.from("profiles").select("*").eq("id", userId).single();
@@ -202,6 +329,12 @@ export default function App() {
     const { data: created } = await supabase.from("profiles").insert({ id: userId, points: 0, is_og: isOg, og_number: ogNumber, ad_free: isOg }).select().single();
     setProfile(created);
   };
+
+  const loginWithGoogle = async () => {
+    await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: window.location.href } });
+  };
+  const logout = async () => { await supabase.auth.signOut(); setUser(null); setProfile(null); };
+
   const hasContribution = profile?.ad_free || (user && allComments.some(c => c.user_id === user.id));
   const requireLogin = (action: () => void) => { if (!user) { setShowLoginModal(true); return; } action(); };
 
@@ -236,17 +369,30 @@ export default function App() {
   const getCourseStats = (courseId: number) => {
     const c = allComments.filter(c => c.course_id === courseId);
     if (!c.length) return null;
-    return { easeAvg: avg(c.map(x => x.ease_rating).filter(Boolean)), workloadAvg: avg(c.map(x => x.workload_rating).filter(Boolean)), passRate: Math.round(c.filter(x => x.passed).length / c.length * 100), count: c.length, examTypes: mostCommon(c.map(x => x.exam_type).filter(Boolean)), materials: mostCommon(c.map(x => x.material_allowed).filter(Boolean)), attendance: mostCommon(c.map(x => x.attendance_type).filter(Boolean)) };
+    return {
+      easeAvg: avg(c.map(x => x.ease_rating).filter(Boolean)),
+      workloadAvg: avg(c.map(x => x.workload_rating).filter(Boolean)),
+      passRate: Math.round(c.filter(x => x.passed).length / c.length * 100),
+      count: c.length,
+      examTypes: mostCommon(c.map(x => x.exam_type).filter(Boolean)),
+      materials: mostCommon(c.map(x => x.material_allowed).filter(Boolean)),
+      attendance: mostCommon(c.map(x => x.attendance_type).filter(Boolean)),
+    };
   };
 
   const universities = Array.from(new Set(allCourses.map(c => c.university).filter(Boolean)));
   const filteredUnis = universities.filter(u => matchUniversity(u, uniQuery) && matchRegion(u, selectedRegion));
-  const filteredCourses = allCourses.filter(c => c.university === selectedUni && (c.name.includes(query) || c.professor.includes(query) || (c.department || "").includes(query) || (c.tags || "").includes(query)));
+  const filteredCourses = allCourses.filter(c =>
+    c.university === selectedUni &&
+    (c.name.includes(query) || c.professor.includes(query) || (c.department || "").includes(query) || (c.tags || "").includes(query))
+  );
   const stats = selected ? getCourseStats(selected.id) : null;
 
-  const inputStyle = { width: "100%", boxSizing: "border-box" as const, padding: "8px 10px", background: "#fffdf0", border: `1px solid ${C.border}`, borderRadius: 6, color: C.text, fontSize: 14, outline: "none", marginBottom: 8 };
+  const inputStyle = { width: "100%", boxSizing: "border-box" as const, padding: "8px 10px", background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, color: C.text, fontSize: 14, outline: "none", marginBottom: 8 };
   const labelStyle = { fontSize: 11, color: C.textMuted, marginBottom: 4, display: "block" as const };
   const cardStyle = { background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "16px", marginBottom: 12 };
+
+  const REGIONS = ["全国", "関東", "関西", "東海", "東北", "北海道", "九州", "中国四国", "北陸信越"];
 
   return (
     <div style={{ fontFamily: "'Hiragino Sans', 'Noto Sans JP', sans-serif", background: "#ffffff", minHeight: "100vh", color: C.text }}>
@@ -289,7 +435,7 @@ export default function App() {
             <h3 style={{ margin: "0 0 8px", color: C.text, fontSize: 18 }}>ログインが必要です</h3>
             <p style={{ margin: "0 0 8px", color: C.textMuted, fontSize: 13 }}>口コミの投稿・授業の追加にはGoogleアカウントでのログインが必要です</p>
             <div style={{ background: "#fffacc", borderRadius: 8, padding: "8px 12px", marginBottom: 16, fontSize: 12, color: C.accentDark, fontWeight: 600 }}>
-              👑 先着1000名限定：OGバッジ＋永久広告なし特典！
+              👑 先着1000名限定：永久無料＆広告なし特典！
             </div>
             <button onClick={loginWithGoogle} style={{ width: "100%", padding: "12px", background: C.accent, border: "none", borderRadius: 8, color: C.text, fontSize: 14, fontWeight: 700, cursor: "pointer", marginBottom: 10 }}>
               G　Googleでログイン
@@ -299,12 +445,12 @@ export default function App() {
         </div>
       )}
 
-      {/* Header */}
+      {/* ヘッダー */}
       <div style={{ background: C.bg, borderBottom: `2px solid ${C.accent}`, padding: "14px 16px" }}>
         <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }} onClick={() => { setScreen("top"); setSelectedUni(""); setSelected(null); setQuery(""); }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }} onClick={() => { setScreen("top"); setSelectedUni(""); setSelected(null); setQuery(""); setUniQuery(""); setSelectedRegion("全国"); }}>
             <span style={{ fontSize: 22 }}>📖</span>
-            <span style={{ fontSize: 20, fontWeight: 700, color: C.text }}>楽卒</span>
+            <span style={{ fontSize: 20, fontWeight: 700, color: C.text }}>楽卒.com</span>
           </div>
           {user ? (
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -332,10 +478,9 @@ export default function App() {
       {/* 広告バナー */}
       {!hasContribution && (
         <div style={{ background: "#fffacc", borderBottom: `1px solid ${C.border}`, padding: "6px 16px" }}>
-          <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 11 }}>
-            <span style={{ color: C.textMuted }}>📢 広告スペース</span>
+          <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "flex-end", fontSize: 11 }}>
             <span style={{ color: C.accentDark, cursor: "pointer" }} onClick={() => user ? null : setShowLoginModal(true)}>
-              {user ? "口コミを1件投稿すると広告が消えます！" : "先着1000名は永久広告なし！今すぐログイン →"}
+              {user ? "口コミを1件投稿すると広告が消えます！" : "先着1000名は永久無料＆広告なし！今すぐログイン →"}
             </span>
           </div>
         </div>
@@ -348,7 +493,7 @@ export default function App() {
           <div>
             <div style={{ textAlign: "center", padding: "24px 0 20px" }}>
               <div style={{ fontSize: 40, marginBottom: 10 }}>🎓</div>
-              <h2 style={{ margin: "0 0 6px", fontSize: 22, color: C.text }}>楽して卒業！学生の味方サイト</h2>
+              <h2 style={{ margin: "0 0 6px", fontSize: 22, color: C.text }}>楽単特化！学生の味方サイト</h2>
             </div>
 
             <div style={{ marginBottom: 20 }}>
@@ -367,13 +512,15 @@ export default function App() {
 
             {/* 地域フィルター */}
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
-              {["全国", "関東", "関西", "東海", "東北", "北海道", "九州", "中国四国", "北陸信越"].map(region => (
+              {REGIONS.map(region => (
                 <button key={region} onClick={() => setSelectedRegion(region)}
                   style={{ padding: "5px 12px", borderRadius: 20, border: `1px solid ${selectedRegion === region ? C.accentDark : C.border}`, background: selectedRegion === region ? C.accent : "#fff", color: selectedRegion === region ? C.accentDark : C.textMuted, fontSize: 12, fontWeight: selectedRegion === region ? 700 : 400, cursor: "pointer" }}>
                   {region}
                 </button>
               ))}
             </div>
+
+            <p style={{ fontSize: 12, color: C.textMuted, marginBottom: 8 }}>{filteredUnis.length}件の大学</p>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {filteredUnis.map((uni) => {
@@ -395,11 +542,10 @@ export default function App() {
               {filteredUnis.length === 0 && <div style={{ textAlign: "center", color: C.textMuted, padding: "30px 0", fontSize: 14 }}>{uniQuery ? `「${uniQuery}」に一致する大学が見つかりません` : "大学データがありません"}</div>}
             </div>
 
-            {/* フッター */}
             <div style={{ marginTop: 32, paddingTop: 16, borderTop: `1px solid ${C.border}`, textAlign: "center" }}>
               <button onClick={() => setScreen("terms")} style={{ background: "none", border: "none", color: C.textMuted, fontSize: 12, cursor: "pointer", textDecoration: "underline" }}>利用規約</button>
               <span style={{ color: C.textLight, margin: "0 8px", fontSize: 12 }}>|</span>
-              <span style={{ color: C.textLight, fontSize: 12 }}>© 2025 楽卒</span>
+              <span style={{ color: C.textLight, fontSize: 12 }}>© 2025 楽卒.com</span>
             </div>
           </div>
         )}
@@ -409,7 +555,7 @@ export default function App() {
           <div style={cardStyle}>
             <h2 style={{ margin: "0 0 16px", fontSize: 18, color: C.text }}>利用規約</h2>
             {[
-              { title: "第1条（目的）", body: "本サービス「楽卒」（以下「本サービス」）は、大学生が授業に関する口コミ情報を共有するためのプラットフォームです。" },
+              { title: "第1条（目的）", body: "本サービス「楽卒.com」（以下「本サービス」）は、大学生が授業に関する口コミ情報を共有するためのプラットフォームです。" },
               { title: "第2条（禁止事項）", body: "ユーザーは以下の行為を行ってはなりません。\n・教員・学生個人への誹謗中傷や名誉毀損\n・事実と異なる虚偽情報の投稿\n・スパムや宣伝目的の投稿\n・他者のプライバシーを侵害する投稿\n・その他、公序良俗に反する行為" },
               { title: "第3条（投稿内容の責任）", body: "投稿内容の責任はユーザー本人に帰属します。本サービスは投稿内容の正確性を保証しません。" },
               { title: "第4条（コンテンツの削除）", body: "運営者は、禁止事項に該当すると判断した投稿を予告なく削除できるものとします。通報機能を通じてご連絡いただいた場合、内容を確認のうえ対応します。" },
@@ -422,7 +568,7 @@ export default function App() {
               </div>
             ))}
             <div style={{ marginTop: 16, padding: 12, background: "#fffacc", borderRadius: 8, fontSize: 12, color: C.accentDark }}>
-              制定日：2025年1月1日　運営：楽卒
+              制定日：2025年1月1日　運営：楽卒.com
             </div>
           </div>
         )}
@@ -480,7 +626,7 @@ export default function App() {
             <label style={labelStyle}>大学名 *</label>
             <select value={courseForm.university} onChange={(e) => setCourseForm({ ...courseForm, university: e.target.value })} style={{ ...inputStyle, appearance: "none" as const }}>
               <option value="">大学を選択してください</option>
-              {universities.map(u => <option key={u} value={u}>{u}</option>)}
+              {universities.sort().map(u => <option key={u} value={u}>{u}</option>)}
             </select>
             <label style={labelStyle}>授業名 *</label>
             <input value={courseForm.name} onChange={(e) => setCourseForm({ ...courseForm, name: e.target.value })} placeholder="例：経営学概論" style={{ ...inputStyle, borderColor: duplicateError ? C.red : C.border }} />
@@ -628,10 +774,7 @@ export default function App() {
                             <span style={{ fontSize: 11, color: C.textMuted }}>GPA {c.gpa}</span>
                             <span style={{ fontSize: 12, fontWeight: 700, color: c.passed ? C.green : C.red }}>{c.passed ? "✅ 取得" : "❌ 落単"}</span>
                           </div>
-                          {/* 通報ボタン */}
-                          <button onClick={() => setShowReportModal(c.id)}
-                            style={{ background: "none", border: "none", color: C.textLight, fontSize: 11, cursor: "pointer", padding: "2px 6px", borderRadius: 4 }}
-                            title="この口コミを通報する">
+                          <button onClick={() => setShowReportModal(c.id)} style={{ background: "none", border: "none", color: C.textLight, fontSize: 11, cursor: "pointer", padding: "2px 6px", borderRadius: 4 }} title="この口コミを通報する">
                             🚨 通報
                           </button>
                         </div>
