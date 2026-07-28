@@ -24,6 +24,7 @@ const C = {
 };
 
 interface User { id: string; email: string; user_metadata: { full_name?: string; avatar_url?: string }; }
+interface Profile { id: string; points: number; ad_free: boolean; is_og: boolean; og_number: number; }
 interface Comment { id: number; course_id: number; year: string; gpa: string; ease_rating: number; workload_rating: number; exam_type: string; material_allowed: string; attendance_type: string; passed: boolean; text: string; user_id?: string; }
 interface Course { id: number; name: string; professor: string; department: string; credits: number; tags: string; university: string; }
 type Screen = "top" | "courses" | "detail" | "add_course" | "terms";
@@ -73,6 +74,7 @@ const similarity = (a: string, b: string) => {
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [showReportModal, setShowReportModal] = useState<number | null>(null);
   const [reportReason, setReportReason] = useState("");
   const [reportSent, setReportSent] = useState(false);
@@ -95,10 +97,16 @@ export default function App() {
 
   useEffect(() => {
     fetchAllCourses(); fetchAllComments();
-    supabase.auth.getSession().then(({ data: { session } }) => setUser(session?.user as User ?? null));
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      const u = session?.user as User ?? null;
+      setUser(u);
+      if (u) fetchOrCreateProfile(u.id);
+    });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
-      setUser(session?.user as User ?? null);
-      if (session) setShowLoginModal(false);
+      const u = session?.user as User ?? null;
+      setUser(u);
+      if (u) { fetchOrCreateProfile(u.id); setShowLoginModal(false); }
+      else setProfile(null);
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -121,8 +129,20 @@ export default function App() {
     setComments(data || []);
   };
   const loginWithGoogle = async () => { await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: window.location.href } }); };
+
+  const fetchOrCreateProfile = async (userId: string) => {
+    const { data: existing } = await supabase.from("profiles").select("*").eq("id", userId).single();
+    if (existing) { setProfile(existing); return; }
+    const { count } = await supabase.from("profiles").select("*", { count: "exact", head: true });
+    const ogCount = count || 0;
+    const isOg = ogCount < 1000;
+    const ogNumber = isOg ? ogCount + 1 : null;
+    const newProfile = { id: userId, points: 0, ad_free: isOg, is_og: isOg, og_number: ogNumber };
+    await supabase.from("profiles").insert(newProfile);
+    setProfile(newProfile as Profile);
+  };
   const logout = async () => { await supabase.auth.signOut(); setUser(null); };
-  const hasContribution = user && allComments.some(c => c.user_id === user.id);
+  const isAdFree = profile?.ad_free || (user && allComments.some(c => c.user_id === user.id));
   const requireLogin = (action: () => void) => { if (!user) { setShowLoginModal(true); return; } action(); };
 
   const submitReport = async () => {
@@ -225,7 +245,8 @@ export default function App() {
           </div>
           {user ? (
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              {hasContribution && <span style={{ fontSize: 10, background: C.greenBg, color: C.green, padding: "2px 8px", borderRadius: 20, fontWeight: 700 }}>広告なし</span>}
+              {profile?.is_og && <span style={{ fontSize: 10, background: "#fffacc", color: C.accentDark, padding: "2px 8px", borderRadius: 20, fontWeight: 700 }}>👑 OG#{String(profile.og_number).padStart(3, "0")}</span>}
+              {isAdFree && <span style={{ fontSize: 10, background: C.greenBg, color: C.green, padding: "2px 8px", borderRadius: 20, fontWeight: 700 }}>広告なし</span>}
               <img src={user.user_metadata.avatar_url} style={{ width: 28, height: 28, borderRadius: "50%", border: `2px solid ${C.accent}` }} />
               <button onClick={logout} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 6, color: C.textMuted, fontSize: 11, padding: "4px 8px", cursor: "pointer" }}>ログアウト</button>
             </div>
@@ -242,7 +263,7 @@ export default function App() {
       </div>
 
       {/* 広告バナー */}
-      {!hasContribution && (
+      {!isAdFree && (
         <div style={{ background: "#fffacc", borderBottom: `1px solid ${C.border}`, padding: "6px 16px" }}>
           <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 11 }}>
             <span style={{ color: C.textMuted }}>📢 広告スペース</span>
