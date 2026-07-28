@@ -187,7 +187,7 @@ export default function App() {
   const cardStyle = { background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "16px", marginBottom: 12 };
 
   return (
-    <div style={{ fontFamily: "'Hiragino Sans', 'Noto Sans JP', sans-serif", background: C.bg, minHeight: "100vh", color: C.text }}>
+    <div style={{ fontFamily: "'Hiragino Sans', 'Noto Sans JP', sans-serif", background: "#ffffff", minHeight: "100vh", color: C.text }}>
 
       {/* 通報モーダル */}
       {showReportModal !== null && (
@@ -238,7 +238,7 @@ export default function App() {
       )}
 
       {/* Header */}
-      <div style={{ background: "#fff", borderBottom: `2px solid ${C.accent}`, padding: "14px 16px" }}>
+      <div style={{ background: C.bg, borderBottom: `2px solid ${C.accent}`, padding: "14px 16px" }}>
         <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }} onClick={() => { setScreen("top"); setSelectedUni(""); setSelected(null); setQuery(""); }}>
             <span style={{ fontSize: 22 }}>📖</span>
