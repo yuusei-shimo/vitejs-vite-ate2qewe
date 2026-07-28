@@ -227,7 +227,7 @@ export default function App() {
             <h3 style={{ margin: "0 0 8px", color: C.text, fontSize: 18 }}>ログインが必要です</h3>
             <p style={{ margin: "0 0 8px", color: C.textMuted, fontSize: 13 }}>口コミの投稿・授業の追加にはGoogleアカウントでのログインが必要です</p>
             <div style={{ background: "#fffacc", borderRadius: 8, padding: "8px 12px", marginBottom: 16, fontSize: 12, color: C.accentDark, fontWeight: 600 }}>
-              👑 先着1000名限定：永久無料＆広告なし特典！
+              👑 先着1000名限定：OGバッジ＋永久広告なし特典！
             </div>
             <button onClick={loginWithGoogle} style={{ width: "100%", padding: "12px", background: C.accent, border: "none", borderRadius: 8, color: C.text, fontSize: 14, fontWeight: 700, cursor: "pointer", marginBottom: 10 }}>
               G　Googleでログイン
@@ -242,7 +242,7 @@ export default function App() {
         <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }} onClick={() => { setScreen("top"); setSelectedUni(""); setSelected(null); setQuery(""); }}>
             <span style={{ fontSize: 22 }}>📖</span>
-            <span style={{ fontSize: 20, fontWeight: 700, color: C.text }}>楽単.jp</span>
+            <span style={{ fontSize: 20, fontWeight: 700, color: C.text }}>楽卒.com</span>
           </div>
           {user ? (
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -271,9 +271,9 @@ export default function App() {
       {!hasContribution && (
         <div style={{ background: "#fffacc", borderBottom: `1px solid ${C.border}`, padding: "6px 16px" }}>
           <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 11 }}>
-            <span></span>
+            <span style={{ color: C.textMuted }}>📢 広告スペース</span>
             <span style={{ color: C.accentDark, cursor: "pointer" }} onClick={() => user ? null : setShowLoginModal(true)}>
-              {user ? "口コミを1件投稿すると広告が消えます！" : "先着1000名は永久無料＆広告なし！今すぐログイン →"}
+              {user ? "口コミを1件投稿すると広告が消えます！" : "先着1000名は永久広告なし！今すぐログイン →"}
             </span>
           </div>
         </div>
@@ -327,7 +327,7 @@ export default function App() {
             <div style={{ marginTop: 32, paddingTop: 16, borderTop: `1px solid ${C.border}`, textAlign: "center" }}>
               <button onClick={() => setScreen("terms")} style={{ background: "none", border: "none", color: C.textMuted, fontSize: 12, cursor: "pointer", textDecoration: "underline" }}>利用規約</button>
               <span style={{ color: C.textLight, margin: "0 8px", fontSize: 12 }}>|</span>
-              <span style={{ color: C.textLight, fontSize: 12 }}>© 2025 楽単.jp</span>
+              <span style={{ color: C.textLight, fontSize: 12 }}>© 2025 楽卒.com</span>
             </div>
           </div>
         )}
@@ -337,7 +337,7 @@ export default function App() {
           <div style={cardStyle}>
             <h2 style={{ margin: "0 0 16px", fontSize: 18, color: C.text }}>利用規約</h2>
             {[
-              { title: "第1条（目的）", body: "本サービス「楽単.jp」（以下「本サービス」）は、大学生が授業に関する口コミ情報を共有するためのプラットフォームです。" },
+              { title: "第1条（目的）", body: "本サービス「楽卒.com」（以下「本サービス」）は、大学生が授業に関する口コミ情報を共有するためのプラットフォームです。" },
               { title: "第2条（禁止事項）", body: "ユーザーは以下の行為を行ってはなりません。\n・教員・学生個人への誹謗中傷や名誉毀損\n・事実と異なる虚偽情報の投稿\n・スパムや宣伝目的の投稿\n・他者のプライバシーを侵害する投稿\n・その他、公序良俗に反する行為" },
               { title: "第3条（投稿内容の責任）", body: "投稿内容の責任はユーザー本人に帰属します。本サービスは投稿内容の正確性を保証しません。" },
               { title: "第4条（コンテンツの削除）", body: "運営者は、禁止事項に該当すると判断した投稿を予告なく削除できるものとします。通報機能を通じてご連絡いただいた場合、内容を確認のうえ対応します。" },
@@ -350,7 +350,7 @@ export default function App() {
               </div>
             ))}
             <div style={{ marginTop: 16, padding: 12, background: "#fffacc", borderRadius: 8, fontSize: 12, color: C.accentDark }}>
-              制定日：2025年1月1日　運営：楽単.jp
+              制定日：2025年1月1日　運営：楽卒.com
             </div>
           </div>
         )}
