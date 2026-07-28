@@ -227,7 +227,7 @@ export default function App() {
             <h3 style={{ margin: "0 0 8px", color: C.text, fontSize: 18 }}>ログインが必要です</h3>
             <p style={{ margin: "0 0 8px", color: C.textMuted, fontSize: 13 }}>口コミの投稿・授業の追加にはGoogleアカウントでのログインが必要です</p>
             <div style={{ background: "#fffacc", borderRadius: 8, padding: "8px 12px", marginBottom: 16, fontSize: 12, color: C.accentDark, fontWeight: 600 }}>
-              👑 先着1000名限定：OGバッジ＋永久広告なし特典！
+              👑 先着1000名限定：永久無料＆広告なし特典！
             </div>
             <button onClick={loginWithGoogle} style={{ width: "100%", padding: "12px", background: C.accent, border: "none", borderRadius: 8, color: C.text, fontSize: 14, fontWeight: 700, cursor: "pointer", marginBottom: 10 }}>
               G　Googleでログイン
@@ -271,9 +271,9 @@ export default function App() {
       {!hasContribution && (
         <div style={{ background: "#fffacc", borderBottom: `1px solid ${C.border}`, padding: "6px 16px" }}>
           <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 11 }}>
-            <span style={{ color: C.textMuted }}>📢 広告スペース</span>
+            <span style={{ color: C.textMuted }}>先着1000名限定</span>
             <span style={{ color: C.accentDark, cursor: "pointer" }} onClick={() => user ? null : setShowLoginModal(true)}>
-              {user ? "口コミを1件投稿すると広告が消えます！" : "先着1000名は永久広告なし！今すぐログイン →"}
+              {user ? "口コミを1件投稿すると広告が消えます！" : "先着1000名は永久無料＆広告なし！今すぐログイン →"}
             </span>
           </div>
         </div>
