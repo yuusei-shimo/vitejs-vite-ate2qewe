@@ -6,6 +6,67 @@ const supabase = createClient(
   import.meta.env.VITE_SUPABASE_ANON_KEY
 );
 
+
+// 地域マップ
+const REGION_MAP: Record<string, string[]> = {
+  "関東": ["東京", "神奈川", "埼玉", "千葉", "茨城", "栃木", "群馬"],
+  "関西": ["大阪", "京都", "兵庫", "奈良", "滋賀", "和歌山", "三重"],
+  "東海": ["愛知", "静岡", "岐阜", "名古屋", "中部"],
+  "東北": ["宮城", "岩手", "青森", "秋田", "山形", "福島", "仙台"],
+  "北海道": ["北海道", "札幌", "函館", "旭川"],
+  "九州": ["福岡", "熊本", "鹿児島", "宮崎", "大分", "佐賀", "長崎", "沖縄", "琉球"],
+  "中国四国": ["広島", "岡山", "山口", "鳥取", "島根", "愛媛", "高知", "香川", "徳島"],
+  "北陸信越": ["新潟", "富山", "石川", "福井", "金沢", "長野"],
+};
+
+// 表記ゆれ・読み仮名辞書
+const ALIAS_MAP: Record<string, string[]> = {
+  "慶應義塾大学": ["慶応義塾大学", "慶応", "慶應", "けいおう", "ケイオウ"],
+  "早稲田大学": ["早大", "わせだ", "ワセダ"],
+  "東京大学": ["東大", "とうだい", "トウダイ"],
+  "京都大学": ["京大", "きょうだい", "キョウダイ"],
+  "一橋大学": ["いっきょう", "ヒトツバシ"],
+  "東京工業大学": ["東工大", "とうこうだい"],
+  "大阪大学": ["阪大", "はんだい"],
+  "名古屋大学": ["名大", "めいだい"],
+  "東北大学": ["とんぺい"],
+  "九州大学": ["きゅうだい"],
+  "北海道大学": ["北大", "ほくだい"],
+  "神戸大学": ["神大", "こうだい"],
+  "筑波大学": ["つくだい"],
+  "横浜国立大学": ["横国", "よっこく"],
+  "立命館大学": ["りつめい"],
+  "同志社大学": ["どうしゃ"],
+  "関西学院大学": ["関学", "かんがく"],
+  "関西大学": ["かんだい"],
+  "近畿大学": ["きんだい"],
+  "明治大学": ["めいじ"],
+  "立教大学": ["りっきょう"],
+  "青山学院大学": ["青学", "あおがく"],
+  "中央大学": ["ちゅうおう"],
+  "法政大学": ["ほうせい"],
+  "日本大学": ["日大", "にちだい"],
+  "東洋大学": ["とうよう"],
+  "専修大学": ["せんしゅう"],
+  "駒澤大学": ["こまざわ"],
+  "国士舘大学": ["こくしかん"],
+};
+
+const normalizeQuery = (q: string): string => q.toLowerCase().replace(/\s/g, "");
+
+const matchUniversity = (uni: string, query: string): boolean => {
+  const nq = normalizeQuery(query);
+  if (normalizeQuery(uni).includes(nq)) return true;
+  const aliases = ALIAS_MAP[uni] || [];
+  return aliases.some(a => normalizeQuery(a).includes(nq));
+};
+
+const matchRegion = (uni: string, region: string): boolean => {
+  if (region === "全国") return true;
+  const keywords = REGION_MAP[region] || [];
+  return keywords.some(k => uni.includes(k));
+};
+
 const C = {
   bg: "#fffdf0",
   card: "#ffffff",
@@ -79,6 +140,7 @@ export default function App() {
   const [reportSent, setReportSent] = useState(false);
   const [screen, setScreen] = useState<Screen>("top");
   const [uniQuery, setUniQuery] = useState("");
+  const [selectedRegion, setSelectedRegion] = useState("全国");
   const [selectedUni, setSelectedUni] = useState("");
   const [query, setQuery] = useState("");
   const [allCourses, setAllCourses] = useState<Course[]>([]);
@@ -178,7 +240,7 @@ export default function App() {
   };
 
   const universities = Array.from(new Set(allCourses.map(c => c.university).filter(Boolean)));
-  const filteredUnis = universities.filter(u => u.includes(uniQuery));
+  const filteredUnis = universities.filter(u => matchUniversity(u, uniQuery) && matchRegion(u, selectedRegion));
   const filteredCourses = allCourses.filter(c => c.university === selectedUni && (c.name.includes(query) || c.professor.includes(query) || (c.department || "").includes(query) || (c.tags || "").includes(query)));
   const stats = selected ? getCourseStats(selected.id) : null;
 
@@ -242,7 +304,7 @@ export default function App() {
         <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }} onClick={() => { setScreen("top"); setSelectedUni(""); setSelected(null); setQuery(""); }}>
             <span style={{ fontSize: 22 }}>📖</span>
-            <span style={{ fontSize: 20, fontWeight: 700, color: C.text }}>楽卒.com</span>
+            <span style={{ fontSize: 20, fontWeight: 700, color: C.text }}>楽卒</span>
           </div>
           {user ? (
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -271,7 +333,7 @@ export default function App() {
       {!hasContribution && (
         <div style={{ background: "#fffacc", borderBottom: `1px solid ${C.border}`, padding: "6px 16px" }}>
           <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 11 }}>
-            <span></span>
+            <span style={{ color: C.textMuted }}>📢 広告スペース</span>
             <span style={{ color: C.accentDark, cursor: "pointer" }} onClick={() => user ? null : setShowLoginModal(true)}>
               {user ? "口コミを1件投稿すると広告が消えます！" : "先着1000名は永久広告なし！今すぐログイン →"}
             </span>
@@ -286,7 +348,7 @@ export default function App() {
           <div>
             <div style={{ textAlign: "center", padding: "24px 0 20px" }}>
               <div style={{ fontSize: 40, marginBottom: 10 }}>🎓</div>
-              <h2 style={{ margin: "0 0 6px", fontSize: 22, color: C.text }}>楽単特化！学生の味方サイト</h2>
+              <h2 style={{ margin: "0 0 6px", fontSize: 22, color: C.text }}>楽して卒業！学生の味方サイト</h2>
             </div>
 
             <div style={{ marginBottom: 20 }}>
@@ -297,10 +359,20 @@ export default function App() {
               </button>
             </div>
 
-            <div style={{ position: "relative", marginBottom: 16 }}>
+            <div style={{ position: "relative", marginBottom: 12 }}>
               <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: 16, opacity: 0.4 }}>🔍</span>
-              <input value={uniQuery} onChange={(e) => setUniQuery(e.target.value)} placeholder="大学名を検索..."
+              <input value={uniQuery} onChange={(e) => setUniQuery(e.target.value)} placeholder="大学名・略称・ひらがなで検索..."
                 style={{ width: "100%", boxSizing: "border-box", padding: "12px 12px 12px 38px", background: "#fff", border: `1px solid ${C.border}`, borderRadius: 10, color: C.text, fontSize: 14, outline: "none" }} />
+            </div>
+
+            {/* 地域フィルター */}
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
+              {["全国", "関東", "関西", "東海", "東北", "北海道", "九州", "中国四国", "北陸信越"].map(region => (
+                <button key={region} onClick={() => setSelectedRegion(region)}
+                  style={{ padding: "5px 12px", borderRadius: 20, border: `1px solid ${selectedRegion === region ? C.accentDark : C.border}`, background: selectedRegion === region ? C.accent : "#fff", color: selectedRegion === region ? C.accentDark : C.textMuted, fontSize: 12, fontWeight: selectedRegion === region ? 700 : 400, cursor: "pointer" }}>
+                  {region}
+                </button>
+              ))}
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -327,7 +399,7 @@ export default function App() {
             <div style={{ marginTop: 32, paddingTop: 16, borderTop: `1px solid ${C.border}`, textAlign: "center" }}>
               <button onClick={() => setScreen("terms")} style={{ background: "none", border: "none", color: C.textMuted, fontSize: 12, cursor: "pointer", textDecoration: "underline" }}>利用規約</button>
               <span style={{ color: C.textLight, margin: "0 8px", fontSize: 12 }}>|</span>
-              <span style={{ color: C.textLight, fontSize: 12 }}>© 2025 楽卒.com</span>
+              <span style={{ color: C.textLight, fontSize: 12 }}>© 2025 楽卒</span>
             </div>
           </div>
         )}
@@ -337,7 +409,7 @@ export default function App() {
           <div style={cardStyle}>
             <h2 style={{ margin: "0 0 16px", fontSize: 18, color: C.text }}>利用規約</h2>
             {[
-              { title: "第1条（目的）", body: "本サービス「楽卒.com」（以下「本サービス」）は、大学生が授業に関する口コミ情報を共有するためのプラットフォームです。" },
+              { title: "第1条（目的）", body: "本サービス「楽卒」（以下「本サービス」）は、大学生が授業に関する口コミ情報を共有するためのプラットフォームです。" },
               { title: "第2条（禁止事項）", body: "ユーザーは以下の行為を行ってはなりません。\n・教員・学生個人への誹謗中傷や名誉毀損\n・事実と異なる虚偽情報の投稿\n・スパムや宣伝目的の投稿\n・他者のプライバシーを侵害する投稿\n・その他、公序良俗に反する行為" },
               { title: "第3条（投稿内容の責任）", body: "投稿内容の責任はユーザー本人に帰属します。本サービスは投稿内容の正確性を保証しません。" },
               { title: "第4条（コンテンツの削除）", body: "運営者は、禁止事項に該当すると判断した投稿を予告なく削除できるものとします。通報機能を通じてご連絡いただいた場合、内容を確認のうえ対応します。" },
@@ -350,7 +422,7 @@ export default function App() {
               </div>
             ))}
             <div style={{ marginTop: 16, padding: 12, background: "#fffacc", borderRadius: 8, fontSize: 12, color: C.accentDark }}>
-              制定日：2025年1月1日　運営：楽卒.com
+              制定日：2025年1月1日　運営：楽卒
             </div>
           </div>
         )}
