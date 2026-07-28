@@ -493,7 +493,7 @@ export default function App() {
           <div>
             <div style={{ textAlign: "center", padding: "24px 0 20px" }}>
               <div style={{ fontSize: 40, marginBottom: 10 }}>🎓</div>
-              <h2 style={{ margin: "0 0 6px", fontSize: 22, color: C.text }}>楽単特化！学生の味方サイト</h2>
+              <h2 style={{ margin: "0 0 6px", fontSize: 22, color: C.text }}>楽して卒業！楽単検索サイト</h2>
             </div>
 
             <div style={{ marginBottom: 20 }}>
