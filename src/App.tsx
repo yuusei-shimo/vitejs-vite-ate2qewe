@@ -6,76 +6,60 @@ const supabase = createClient(
   import.meta.env.VITE_SUPABASE_ANON_KEY
 );
 
-interface User {
-  id: string;
-  email: string;
-  user_metadata: { full_name?: string; avatar_url?: string };
-}
+const C = {
+  bg: "#fffdf0",
+  card: "#ffffff",
+  border: "#FFE566",
+  borderStrong: "#FFD700",
+  accent: "#FFD700",
+  accentDark: "#b8960a",
+  text: "#1a1a1a",
+  textMuted: "#777777",
+  textLight: "#aaaaaa",
+  green: "#16a34a",
+  greenBg: "#f0fff4",
+  red: "#dc2626",
+  redBg: "#fff5f5",
+  orange: "#ea580c",
+};
 
-interface Comment {
-  id: number;
-  course_id: number;
-  year: string;
-  gpa: string;
-  ease_rating: number;
-  workload_rating: number;
-  exam_type: string;
-  material_allowed: string;
-  attendance_type: string;
-  passed: boolean;
-  text: string;
-  user_id?: string;
-}
-
-interface Course {
-  id: number;
-  name: string;
-  professor: string;
-  department: string;
-  credits: number;
-  tags: string;
-  university: string;
-}
-
-type Screen = "top" | "courses" | "detail" | "add_course";
+interface User { id: string; email: string; user_metadata: { full_name?: string; avatar_url?: string }; }
+interface Comment { id: number; course_id: number; year: string; gpa: string; ease_rating: number; workload_rating: number; exam_type: string; material_allowed: string; attendance_type: string; passed: boolean; text: string; user_id?: string; }
+interface Course { id: number; name: string; professor: string; department: string; credits: number; tags: string; university: string; }
+type Screen = "top" | "courses" | "detail" | "add_course" | "terms";
 
 const StarRating = ({ value, onChange }: { value: number; onChange?: (v: number) => void }) => (
   <div style={{ display: "flex", gap: 4 }}>
     {Array.from({ length: 5 }).map((_, i) => (
       <span key={i} onClick={() => onChange && onChange(i + 1)}
-        style={{ fontSize: 28, cursor: onChange ? "pointer" : "default", color: i < value ? "#f59e0b" : "#3a3a5c" }}>★</span>
+        style={{ fontSize: 28, cursor: onChange ? "pointer" : "default", color: i < value ? "#FFD700" : "#e0e0e0" }}>★</span>
     ))}
   </div>
 );
 
 const avg = (arr: number[]) => arr.length ? (arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(1) : null;
-
 const mostCommon = (arr: string[]) => {
   if (!arr.length) return [];
   const counts: Record<string, number> = {};
   arr.forEach(v => { counts[v] = (counts[v] || 0) + 1; });
   const total = arr.length;
-  return Object.entries(counts)
-    .sort((a, b) => b[1] - a[1])
-    .map(([val, count]) => ({ val, pct: Math.round(count / total * 100) }));
+  return Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([val, count]) => ({ val, pct: Math.round(count / total * 100) }));
 };
-
 const BarChart = ({ items, color }: { items: { val: string; pct: number }[]; color: string }) => (
   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
     {items.map(({ val, pct }) => (
       <div key={val}>
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 4 }}>
-          <span style={{ color: "#e8e8f0" }}>{val}</span>
+          <span style={{ color: C.text }}>{val}</span>
           <span style={{ color, fontWeight: 700 }}>{pct}%</span>
         </div>
-        <div style={{ background: "#12121e", borderRadius: 4, height: 8 }}>
+        <div style={{ background: "#f0f0f0", borderRadius: 4, height: 8 }}>
           <div style={{ background: color, borderRadius: 4, height: 8, width: `${pct}%`, transition: "width 0.5s" }} />
         </div>
       </div>
     ))}
   </div>
 );
-
 const similarity = (a: string, b: string) => {
   const s1 = a.toLowerCase().replace(/\s/g, "");
   const s2 = b.toLowerCase().replace(/\s/g, "");
@@ -89,6 +73,9 @@ const similarity = (a: string, b: string) => {
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [showReportModal, setShowReportModal] = useState<number | null>(null);
+  const [reportReason, setReportReason] = useState("");
+  const [reportSent, setReportSent] = useState(false);
   const [screen, setScreen] = useState<Screen>("top");
   const [uniQuery, setUniQuery] = useState("");
   const [selectedUni, setSelectedUni] = useState("");
@@ -104,23 +91,13 @@ export default function App() {
   const [duplicateError, setDuplicateError] = useState("");
   const [similarCourses, setSimilarCourses] = useState<Course[]>([]);
   const [uniInputMode, setUniInputMode] = useState<"select" | "new">("select");
-  const [form, setForm] = useState({
-    year: "", gpa: "", ease_rating: 0, workload_rating: 0,
-    exam_type: "", material_allowed: "", attendance_type: "", passed: "", text: "",
-  });
-  const [courseForm, setCourseForm] = useState({
-    name: "", professor: "", department: "", credits: "", university: "",
-  });
+  const [form, setForm] = useState({ year: "", gpa: "", ease_rating: 0, workload_rating: 0, exam_type: "", material_allowed: "", attendance_type: "", passed: "", text: "" });
+  const [courseForm, setCourseForm] = useState({ name: "", professor: "", department: "", credits: "", university: "" });
 
   useEffect(() => {
-    fetchAllCourses();
-    fetchAllComments();
-    // ログイン状態を取得
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user as User ?? null);
-    });
-    // ログイン状態の変化を監視
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    fetchAllCourses(); fetchAllComments();
+    supabase.auth.getSession().then(({ data: { session } }) => setUser(session?.user as User ?? null));
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
       setUser(session?.user as User ?? null);
       if (session) setShowLoginModal(false);
     });
@@ -130,202 +107,149 @@ export default function App() {
   useEffect(() => { if (selected) fetchComments(selected.id); }, [selected]);
 
   useEffect(() => {
-    if (!courseForm.name || courseForm.name.length < 2 || !courseForm.university) {
-      setSimilarCourses([]); setDuplicateError(""); return;
-    }
+    if (!courseForm.name || courseForm.name.length < 2 || !courseForm.university) { setSimilarCourses([]); setDuplicateError(""); return; }
     const uniCourses = allCourses.filter(c => c.university === courseForm.university);
     const exact = uniCourses.find(c => c.name === courseForm.name && c.professor === courseForm.professor);
     if (exact) { setDuplicateError("この授業名と教員名の組み合わせはすでに登録されています。"); setSimilarCourses([]); return; }
     setDuplicateError("");
-    const similar = uniCourses.filter(c => c.name !== courseForm.name && similarity(c.name, courseForm.name) > 0.5).slice(0, 3);
-    setSimilarCourses(similar);
+    setSimilarCourses(uniCourses.filter(c => c.name !== courseForm.name && similarity(c.name, courseForm.name) > 0.5).slice(0, 3));
   }, [courseForm.name, courseForm.professor, courseForm.university, allCourses]);
 
-  const fetchAllCourses = async () => {
-    const { data } = await supabase.from("courses").select("*");
-    setAllCourses(data || []);
-  };
-
-  const fetchAllComments = async () => {
-    const { data } = await supabase.from("comments").select("*");
-    setAllComments(data || []);
-  };
-
+  const fetchAllCourses = async () => { const { data } = await supabase.from("courses").select("*"); setAllCourses(data || []); };
+  const fetchAllComments = async () => { const { data } = await supabase.from("comments").select("*"); setAllComments(data || []); };
   const fetchComments = async (courseId: number) => {
-    const { data } = await supabase.from("comments").select("*")
-      .eq("course_id", courseId).order("id", { ascending: false });
+    const { data } = await supabase.from("comments").select("*").eq("course_id", courseId).order("id", { ascending: false });
     setComments(data || []);
   };
-
-  const loginWithGoogle = async () => {
-    await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: window.location.href },
-    });
-  };
-
-  const logout = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
-  };
-
-  // 投稿実績があるかチェック（広告非表示の条件）
+  const loginWithGoogle = async () => { await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: window.location.href } }); };
+  const logout = async () => { await supabase.auth.signOut(); setUser(null); };
   const hasContribution = user && allComments.some(c => c.user_id === user.id);
+  const requireLogin = (action: () => void) => { if (!user) { setShowLoginModal(true); return; } action(); };
 
-  const requireLogin = (action: () => void) => {
-    if (!user) { setShowLoginModal(true); return; }
-    action();
+  const submitReport = async () => {
+    if (!reportReason || showReportModal === null) return;
+    await supabase.from("reports").insert({ comment_id: showReportModal, reason: reportReason, reported_by: user?.id || null });
+    setReportSent(true);
+    setTimeout(() => { setShowReportModal(null); setReportReason(""); setReportSent(false); }, 2000);
   };
 
   const submitCourse = async () => {
     if (!courseForm.name || !courseForm.professor || !courseForm.university || !courseForm.credits || duplicateError) return;
     setAddingCourse(true);
-    await supabase.from("courses").insert({
-      name: courseForm.name, professor: courseForm.professor,
-      department: courseForm.department || null,
-      credits: parseInt(courseForm.credits),
-      university: courseForm.university, tags: "",
-    });
+    await supabase.from("courses").insert({ name: courseForm.name, professor: courseForm.professor, department: courseForm.department || null, credits: parseInt(courseForm.credits), university: courseForm.university, tags: "" });
     const uni = courseForm.university;
     setCourseForm({ name: "", professor: "", department: "", credits: "", university: "" });
     setSimilarCourses([]);
     await fetchAllCourses();
-    setAddingCourse(false);
-    setCourseAdded(true);
-    setSelectedUni(uni);
-    setScreen("courses");
+    setAddingCourse(false); setCourseAdded(true); setSelectedUni(uni); setScreen("courses");
     setTimeout(() => setCourseAdded(false), 3000);
   };
 
   const submitComment = async () => {
     if (!selected || !form.year || !form.gpa || !form.ease_rating || !form.workload_rating || !form.exam_type || !form.material_allowed || !form.attendance_type || !form.passed) return;
     setSubmitting(true);
-    await supabase.from("comments").insert({
-      course_id: selected.id,
-      year: form.year, gpa: form.gpa,
-      ease_rating: form.ease_rating, workload_rating: form.workload_rating,
-      exam_type: form.exam_type, material_allowed: form.material_allowed,
-      attendance_type: form.attendance_type,
-      passed: form.passed === "true",
-      text: form.text || null,
-      user_id: user?.id || null,
-    });
+    await supabase.from("comments").insert({ course_id: selected.id, year: form.year, gpa: form.gpa, ease_rating: form.ease_rating, workload_rating: form.workload_rating, exam_type: form.exam_type, material_allowed: form.material_allowed, attendance_type: form.attendance_type, passed: form.passed === "true", text: form.text || null, user_id: user?.id || null });
     setForm({ year: "", gpa: "", ease_rating: 0, workload_rating: 0, exam_type: "", material_allowed: "", attendance_type: "", passed: "", text: "" });
-    await fetchComments(selected.id);
-    await fetchAllComments();
+    await fetchComments(selected.id); await fetchAllComments();
     setSubmitting(false);
   };
 
   const getCourseStats = (courseId: number) => {
     const c = allComments.filter(c => c.course_id === courseId);
     if (!c.length) return null;
-    return {
-      easeAvg: avg(c.map(x => x.ease_rating).filter(Boolean)),
-      workloadAvg: avg(c.map(x => x.workload_rating).filter(Boolean)),
-      passRate: Math.round(c.filter(x => x.passed).length / c.length * 100),
-      count: c.length,
-      examTypes: mostCommon(c.map(x => x.exam_type).filter(Boolean)),
-      materials: mostCommon(c.map(x => x.material_allowed).filter(Boolean)),
-      attendance: mostCommon(c.map(x => x.attendance_type).filter(Boolean)),
-    };
+    return { easeAvg: avg(c.map(x => x.ease_rating).filter(Boolean)), workloadAvg: avg(c.map(x => x.workload_rating).filter(Boolean)), passRate: Math.round(c.filter(x => x.passed).length / c.length * 100), count: c.length, examTypes: mostCommon(c.map(x => x.exam_type).filter(Boolean)), materials: mostCommon(c.map(x => x.material_allowed).filter(Boolean)), attendance: mostCommon(c.map(x => x.attendance_type).filter(Boolean)) };
   };
 
   const universities = Array.from(new Set(allCourses.map(c => c.university).filter(Boolean)));
   const filteredUnis = universities.filter(u => u.includes(uniQuery));
-  const filteredCourses = allCourses.filter(c =>
-    c.university === selectedUni &&
-    (c.name.includes(query) || c.professor.includes(query) || (c.department || "").includes(query) || (c.tags || "").includes(query))
-  );
+  const filteredCourses = allCourses.filter(c => c.university === selectedUni && (c.name.includes(query) || c.professor.includes(query) || (c.department || "").includes(query) || (c.tags || "").includes(query)));
   const stats = selected ? getCourseStats(selected.id) : null;
 
-  const inputStyle = {
-    width: "100%", boxSizing: "border-box" as const, padding: "8px 10px",
-    background: "#1a1a2e", border: "1px solid #3a3a5c", borderRadius: 6,
-    color: "#e8e8f0", fontSize: 13, outline: "none", marginBottom: 8,
-  };
-  const labelStyle = { fontSize: 11, color: "#8888aa", marginBottom: 4, display: "block" as const };
+  const inputStyle = { width: "100%", boxSizing: "border-box" as const, padding: "8px 10px", background: "#fffdf0", border: `1px solid ${C.border}`, borderRadius: 6, color: C.text, fontSize: 13, outline: "none", marginBottom: 8 };
+  const labelStyle = { fontSize: 11, color: C.textMuted, marginBottom: 4, display: "block" as const };
+  const cardStyle = { background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "16px", marginBottom: 12 };
 
   return (
-    <div style={{ fontFamily: "'Hiragino Sans', 'Noto Sans JP', sans-serif", background: "#0f0f13", minHeight: "100vh", color: "#e8e8f0" }}>
+    <div style={{ fontFamily: "'Hiragino Sans', 'Noto Sans JP', sans-serif", background: C.bg, minHeight: "100vh", color: C.text }}>
+
+      {/* 通報モーダル */}
+      {showReportModal !== null && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+          <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 16, padding: 24, maxWidth: 360, width: "90%" }}>
+            {reportSent ? (
+              <div style={{ textAlign: "center", padding: "20px 0" }}>
+                <div style={{ fontSize: 32, marginBottom: 8 }}>✅</div>
+                <div style={{ fontWeight: 700, color: C.green }}>通報を受け付けました</div>
+                <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>ご協力ありがとうございます</div>
+              </div>
+            ) : (
+              <>
+                <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 12 }}>🚨 この口コミを通報する</div>
+                <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12 }}>通報理由を選択してください</div>
+                {["教員への誹謗中傷", "事実と異なる情報", "スパム・宣伝", "その他"].map(r => (
+                  <div key={r} onClick={() => setReportReason(r)}
+                    style={{ padding: "10px 12px", borderRadius: 8, border: `1px solid ${reportReason === r ? C.accentDark : C.border}`, background: reportReason === r ? "#fffacc" : "#fff", marginBottom: 6, cursor: "pointer", fontSize: 13, fontWeight: reportReason === r ? 700 : 400 }}>
+                    {r}
+                  </div>
+                ))}
+                <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                  <button onClick={() => { setShowReportModal(null); setReportReason(""); }} style={{ flex: 1, padding: "10px", background: "none", border: `1px solid ${C.border}`, borderRadius: 6, color: C.textMuted, fontSize: 13, cursor: "pointer" }}>キャンセル</button>
+                  <button onClick={submitReport} disabled={!reportReason} style={{ flex: 2, padding: "10px", background: C.accent, border: "none", borderRadius: 6, color: C.text, fontSize: 13, fontWeight: 700, cursor: "pointer", opacity: !reportReason ? 0.5 : 1 }}>通報する</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ログインモーダル */}
       {showLoginModal && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
-          <div style={{ background: "#1a1a2e", border: "1px solid #2a2a4a", borderRadius: 16, padding: 28, maxWidth: 360, width: "90%", textAlign: "center" }}>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
+          <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 16, padding: 28, maxWidth: 360, width: "90%", textAlign: "center" }}>
             <div style={{ fontSize: 32, marginBottom: 12 }}>🔐</div>
-            <h3 style={{ margin: "0 0 8px", color: "#fff", fontSize: 18 }}>ログインが必要です</h3>
-            <p style={{ margin: "0 0 20px", color: "#8888aa", fontSize: 13 }}>口コミの投稿・授業の追加にはGoogleアカウントでのログインが必要です</p>
-            <button onClick={loginWithGoogle}
-              style={{ width: "100%", padding: "12px", background: "#fff", border: "none", borderRadius: 8, color: "#1a1a2e", fontSize: 14, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 10 }}>
-              <span style={{ fontSize: 18 }}>G</span> Googleでログイン
+            <h3 style={{ margin: "0 0 8px", color: C.text, fontSize: 18 }}>ログインが必要です</h3>
+            <p style={{ margin: "0 0 20px", color: C.textMuted, fontSize: 13 }}>口コミの投稿・授業の追加にはGoogleアカウントでのログインが必要です</p>
+            <button onClick={loginWithGoogle} style={{ width: "100%", padding: "12px", background: C.accent, border: "none", borderRadius: 8, color: C.text, fontSize: 14, fontWeight: 700, cursor: "pointer", marginBottom: 10 }}>
+              G　Googleでログイン
             </button>
-            <button onClick={() => setShowLoginModal(false)}
-              style={{ width: "100%", padding: "10px", background: "none", border: "1px solid #3a3a5c", borderRadius: 8, color: "#8888aa", fontSize: 13, cursor: "pointer" }}>
-              キャンセル
-            </button>
+            <button onClick={() => setShowLoginModal(false)} style={{ width: "100%", padding: "10px", background: "none", border: `1px solid ${C.border}`, borderRadius: 8, color: C.textMuted, fontSize: 13, cursor: "pointer" }}>キャンセル</button>
           </div>
         </div>
       )}
 
       {/* Header */}
-      <div style={{ background: "linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)", borderBottom: "1px solid #2a2a4a", padding: "16px 24px" }}>
+      <div style={{ background: "#fff", borderBottom: `2px solid ${C.accent}`, padding: "14px 24px" }}>
         <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 20, cursor: "pointer" }} onClick={() => { setScreen("top"); setSelectedUni(""); setSelected(null); setQuery(""); }}>📖</span>
-            <h1 onClick={() => { setScreen("top"); setSelectedUni(""); setSelected(null); setQuery(""); }}
-              style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#fff", cursor: "pointer" }}>裏シラバス</h1>
-            <span style={{ fontSize: 10, background: "#7c3aed", color: "#fff", padding: "2px 6px", borderRadius: 20, fontWeight: 600 }}>BETA</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }} onClick={() => { setScreen("top"); setSelectedUni(""); setSelected(null); setQuery(""); }}>
+            <span style={{ fontSize: 22 }}>📖</span>
+            <span style={{ fontSize: 20, fontWeight: 700, color: C.text }}>楽単.jp</span>
           </div>
-          {/* ログインボタン */}
           {user ? (
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              {hasContribution && <span style={{ fontSize: 10, background: "#14532d", color: "#22c55e", padding: "2px 8px", borderRadius: 20, fontWeight: 600 }}>広告なし</span>}
-              <img src={user.user_metadata.avatar_url} style={{ width: 28, height: 28, borderRadius: "50%", border: "2px solid #7c3aed" }} />
-              <button onClick={logout} style={{ background: "none", border: "1px solid #3a3a5c", borderRadius: 6, color: "#8888aa", fontSize: 11, padding: "4px 8px", cursor: "pointer" }}>ログアウト</button>
+              {hasContribution && <span style={{ fontSize: 10, background: C.greenBg, color: C.green, padding: "2px 8px", borderRadius: 20, fontWeight: 700 }}>広告なし</span>}
+              <img src={user.user_metadata.avatar_url} style={{ width: 28, height: 28, borderRadius: "50%", border: `2px solid ${C.accent}` }} />
+              <button onClick={logout} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 6, color: C.textMuted, fontSize: 11, padding: "4px 8px", cursor: "pointer" }}>ログアウト</button>
             </div>
           ) : (
-            <button onClick={loginWithGoogle}
-              style={{ padding: "6px 14px", background: "#7c3aed", border: "none", borderRadius: 8, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-              ログイン
-            </button>
+            <button onClick={loginWithGoogle} style={{ padding: "6px 14px", background: C.accent, border: "none", borderRadius: 8, color: C.text, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>ログイン</button>
           )}
         </div>
-        {/* パンくず */}
-        <div style={{ maxWidth: 720, margin: "8px auto 0" }}>
-          {screen === "courses" && (
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <button onClick={() => { setScreen("top"); setSelectedUni(""); setQuery(""); }} style={{ background: "none", border: "none", color: "#7c3aed", cursor: "pointer", fontSize: 12, padding: 0 }}>← トップ</button>
-              <span style={{ fontSize: 13, color: "#e8e8f0", fontWeight: 600 }}>{selectedUni}</span>
-            </div>
-          )}
-          {screen === "add_course" && (
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <button onClick={() => { setScreen(selectedUni ? "courses" : "top"); setSimilarCourses([]); setDuplicateError(""); }} style={{ background: "none", border: "none", color: "#7c3aed", cursor: "pointer", fontSize: 12, padding: 0 }}>← 戻る</button>
-              <span style={{ fontSize: 13, color: "#e8e8f0", fontWeight: 600 }}>授業を追加</span>
-            </div>
-          )}
-          {screen === "detail" && (
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <button onClick={() => { setScreen("courses"); setSelected(null); }} style={{ background: "none", border: "none", color: "#7c3aed", cursor: "pointer", fontSize: 12, padding: 0 }}>← {selectedUni}</button>
-              <span style={{ fontSize: 13, color: "#e8e8f0", fontWeight: 600 }}>{selected?.name}</span>
-            </div>
-          )}
+        <div style={{ maxWidth: 720, margin: "6px auto 0" }}>
+          {screen === "courses" && <div style={{ display: "flex", alignItems: "center", gap: 8 }}><button onClick={() => { setScreen("top"); setSelectedUni(""); setQuery(""); }} style={{ background: "none", border: "none", color: C.accentDark, cursor: "pointer", fontSize: 12, padding: 0 }}>← トップ</button><span style={{ fontSize: 13, color: C.text, fontWeight: 700 }}>{selectedUni}</span></div>}
+          {screen === "add_course" && <div style={{ display: "flex", alignItems: "center", gap: 8 }}><button onClick={() => { setScreen(selectedUni ? "courses" : "top"); setSimilarCourses([]); setDuplicateError(""); }} style={{ background: "none", border: "none", color: C.accentDark, cursor: "pointer", fontSize: 12, padding: 0 }}>← 戻る</button><span style={{ fontSize: 13, color: C.text, fontWeight: 700 }}>授業を追加</span></div>}
+          {screen === "detail" && <div style={{ display: "flex", alignItems: "center", gap: 8 }}><button onClick={() => { setScreen("courses"); setSelected(null); }} style={{ background: "none", border: "none", color: C.accentDark, cursor: "pointer", fontSize: 12, padding: 0 }}>← {selectedUni}</button><span style={{ fontSize: 13, color: C.text, fontWeight: 700 }}>{selected?.name}</span></div>}
+          {screen === "terms" && <div style={{ display: "flex", alignItems: "center", gap: 8 }}><button onClick={() => setScreen("top")} style={{ background: "none", border: "none", color: C.accentDark, cursor: "pointer", fontSize: 12, padding: 0 }}>← トップ</button><span style={{ fontSize: 13, color: C.text, fontWeight: 700 }}>利用規約</span></div>}
         </div>
       </div>
 
-      {/* 広告バナー（未投稿ユーザーのみ） */}
+      {/* 広告バナー */}
       {!hasContribution && (
-        <div style={{ background: "#1a1a2e", borderBottom: "1px solid #2a2a4a", padding: "8px 24px", textAlign: "center" }}>
-          <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <div style={{ fontSize: 11, color: "#6666aa" }}>📢 広告スペース</div>
-            {!user && (
-              <div style={{ fontSize: 11, color: "#7c3aed", cursor: "pointer" }} onClick={() => setShowLoginModal(true)}>
-                口コミを投稿すると広告が消えます →
-              </div>
-            )}
-            {user && !hasContribution && (
-              <div style={{ fontSize: 11, color: "#7c3aed" }}>口コミを1件投稿すると広告が消えます！</div>
-            )}
+        <div style={{ background: "#fffacc", borderBottom: `1px solid ${C.border}`, padding: "6px 24px" }}>
+          <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 11 }}>
+            <span style={{ color: C.textMuted }}>📢 広告スペース</span>
+            <span style={{ color: C.accentDark, cursor: "pointer" }} onClick={() => user ? null : setShowLoginModal(true)}>
+              {user ? "口コミを1件投稿すると広告が消えます！" : "ログインして口コミを投稿すると広告が消えます →"}
+            </span>
           </div>
         </div>
       )}
@@ -336,53 +260,81 @@ export default function App() {
         {screen === "top" && (
           <div>
             <div style={{ textAlign: "center", padding: "24px 0 20px" }}>
-              <div style={{ fontSize: 40, marginBottom: 12 }}>🎓</div>
-              <h2 style={{ margin: "0 0 8px", fontSize: 22, color: "#fff" }}>大学を選んでください</h2>
-              <p style={{ margin: 0, fontSize: 13, color: "#8888aa" }}>先輩たちのリアルな口コミで、賢く履修選択</p>
+              <div style={{ fontSize: 40, marginBottom: 10 }}>🎓</div>
+              <h2 style={{ margin: "0 0 6px", fontSize: 22, color: C.text }}>楽単特化！学生の味方サイト</h2>
+              <p style={{ margin: "0 0 4px", fontSize: 13, color: C.textMuted }}>楽して単位を取る、それだけでいい。</p>
+              <p style={{ margin: 0, fontSize: 12, color: C.textLight }}>GPA1.5の僕が、落単しながら学んだ全部を詰め込んだ。</p>
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>
               <button onClick={() => requireLogin(() => { setScreen("add_course"); setCourseForm({ name: "", professor: "", department: "", credits: "", university: "" }); setUniInputMode("select"); })}
-                style={{ padding: "16px 12px", background: "linear-gradient(135deg, #7c3aed, #4f46e5)", border: "none", borderRadius: 12, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+                style={{ padding: "16px 12px", background: C.accent, border: `1px solid ${C.borderStrong}`, borderRadius: 12, color: C.text, fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
                 <span style={{ fontSize: 26 }}>📚</span>
                 <span>授業を追加する</span>
-                <span style={{ fontSize: 11, fontWeight: 400, opacity: 0.8 }}>要ログイン</span>
+                <span style={{ fontSize: 11, fontWeight: 400, color: C.accentDark }}>要ログイン</span>
               </button>
               <button onClick={() => requireLogin(() => { setScreen("add_course"); setCourseForm({ name: "", professor: "", department: "", credits: "", university: "" }); setUniInputMode("new"); })}
-                style={{ padding: "16px 12px", background: "linear-gradient(135deg, #0e7490, #0f766e)", border: "none", borderRadius: 12, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+                style={{ padding: "16px 12px", background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, color: C.text, fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
                 <span style={{ fontSize: 26 }}>🏫</span>
                 <span>大学を追加する</span>
-                <span style={{ fontSize: 11, fontWeight: 400, opacity: 0.8 }}>要ログイン</span>
+                <span style={{ fontSize: 11, fontWeight: 400, color: C.textMuted }}>要ログイン</span>
               </button>
             </div>
 
             <div style={{ position: "relative", marginBottom: 16 }}>
-              <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: 16, opacity: 0.5 }}>🔍</span>
+              <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: 16, opacity: 0.4 }}>🔍</span>
               <input value={uniQuery} onChange={(e) => setUniQuery(e.target.value)} placeholder="大学名を検索..."
-                style={{ width: "100%", boxSizing: "border-box", padding: "12px 12px 12px 38px", background: "#1e1e30", border: "1px solid #3a3a5c", borderRadius: 10, color: "#e8e8f0", fontSize: 14, outline: "none" }} />
+                style={{ width: "100%", boxSizing: "border-box", padding: "12px 12px 12px 38px", background: "#fff", border: `1px solid ${C.border}`, borderRadius: 10, color: C.text, fontSize: 14, outline: "none" }} />
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {filteredUnis.length === 0 ? (
-                <div style={{ textAlign: "center", color: "#6666aa", padding: "30px 0", fontSize: 14 }}>
-                  {uniQuery ? `「${uniQuery}」に一致する大学が見つかりません` : "大学データがありません"}
-                </div>
-              ) : filteredUnis.map((uni) => {
+              {filteredUnis.map((uni) => {
                 const uniCourses = allCourses.filter(c => c.university === uni);
                 const uniComments = allComments.filter(c => uniCourses.some(course => course.id === c.course_id));
                 return (
                   <div key={uni} onClick={() => { setSelectedUni(uni); setScreen("courses"); setQuery(""); setCourseAdded(false); }}
-                    style={{ background: "#1a1a2e", border: "1px solid #2a2a4a", borderRadius: 12, padding: "16px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}
-                    onMouseEnter={(e) => (e.currentTarget.style.borderColor = "#7c3aed")}
-                    onMouseLeave={(e) => (e.currentTarget.style.borderColor = "#2a2a4a")}>
+                    style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, padding: "16px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}
+                    onMouseEnter={(e) => (e.currentTarget.style.borderColor = C.accentDark)}
+                    onMouseLeave={(e) => (e.currentTarget.style.borderColor = C.border)}>
                     <div>
-                      <div style={{ fontWeight: 700, fontSize: 16, color: "#fff", marginBottom: 4 }}>{uni}</div>
-                      <div style={{ fontSize: 12, color: "#8888aa" }}>{uniCourses.length}授業 · {uniComments.length}件の口コミ</div>
+                      <div style={{ fontWeight: 700, fontSize: 15, color: C.text, marginBottom: 2 }}>{uni}</div>
+                      <div style={{ fontSize: 12, color: C.textMuted }}>{uniCourses.length}授業 · {uniComments.length}件の口コミ</div>
                     </div>
-                    <span style={{ color: "#7c3aed", fontSize: 20 }}>→</span>
+                    <span style={{ color: C.accentDark, fontSize: 18 }}>→</span>
                   </div>
                 );
               })}
+              {filteredUnis.length === 0 && <div style={{ textAlign: "center", color: C.textMuted, padding: "30px 0", fontSize: 14 }}>{uniQuery ? `「${uniQuery}」に一致する大学が見つかりません` : "大学データがありません"}</div>}
+            </div>
+
+            {/* フッター */}
+            <div style={{ marginTop: 32, paddingTop: 16, borderTop: `1px solid ${C.border}`, textAlign: "center" }}>
+              <button onClick={() => setScreen("terms")} style={{ background: "none", border: "none", color: C.textMuted, fontSize: 12, cursor: "pointer", textDecoration: "underline" }}>利用規約</button>
+              <span style={{ color: C.textLight, margin: "0 8px", fontSize: 12 }}>|</span>
+              <span style={{ color: C.textLight, fontSize: 12 }}>© 2025 楽単.jp</span>
+            </div>
+          </div>
+        )}
+
+        {/* 利用規約 */}
+        {screen === "terms" && (
+          <div style={cardStyle}>
+            <h2 style={{ margin: "0 0 16px", fontSize: 18, color: C.text }}>利用規約</h2>
+            {[
+              { title: "第1条（目的）", body: "本サービス「楽単.jp」（以下「本サービス」）は、大学生が授業に関する口コミ情報を共有するためのプラットフォームです。" },
+              { title: "第2条（禁止事項）", body: "ユーザーは以下の行為を行ってはなりません。\n・教員・学生個人への誹謗中傷や名誉毀損\n・事実と異なる虚偽情報の投稿\n・スパムや宣伝目的の投稿\n・他者のプライバシーを侵害する投稿\n・その他、公序良俗に反する行為" },
+              { title: "第3条（投稿内容の責任）", body: "投稿内容の責任はユーザー本人に帰属します。本サービスは投稿内容の正確性を保証しません。" },
+              { title: "第4条（コンテンツの削除）", body: "運営者は、禁止事項に該当すると判断した投稿を予告なく削除できるものとします。通報機能を通じてご連絡いただいた場合、内容を確認のうえ対応します。" },
+              { title: "第5条（免責事項）", body: "本サービスに掲載された情報の利用により生じた損害について、運営者は一切の責任を負いません。" },
+              { title: "第6条（規約の変更）", body: "運営者は必要に応じて本規約を変更できるものとします。変更後の規約はサービス上に掲示した時点で効力を生じます。" },
+            ].map(({ title, body }) => (
+              <div key={title} style={{ marginBottom: 16 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: C.text, marginBottom: 4 }}>{title}</div>
+                <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.8, whiteSpace: "pre-line" }}>{body}</div>
+              </div>
+            ))}
+            <div style={{ marginTop: 16, padding: 12, background: "#fffacc", borderRadius: 8, fontSize: 12, color: C.accentDark }}>
+              制定日：2025年1月1日　運営：楽単.jp
             </div>
           </div>
         )}
@@ -390,141 +342,100 @@ export default function App() {
         {/* 授業一覧 */}
         {screen === "courses" && (
           <div>
-            {courseAdded && (
-              <div style={{ background: "#14532d", border: "1px solid #22c55e", borderRadius: 8, padding: "10px 14px", marginBottom: 12, fontSize: 13, color: "#22c55e" }}>✅ 授業を追加しました！</div>
-            )}
+            {courseAdded && <div style={{ background: C.greenBg, border: `1px solid ${C.green}`, borderRadius: 8, padding: "10px 14px", marginBottom: 12, fontSize: 13, color: C.green }}>✅ 授業を追加しました！</div>}
             <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
               <div style={{ position: "relative", flex: 1 }}>
-                <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: 16, opacity: 0.5 }}>🔍</span>
+                <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: 16, opacity: 0.4 }}>🔍</span>
                 <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="授業名・教授名で検索..."
-                  style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px 10px 38px", background: "#1e1e30", border: "1px solid #3a3a5c", borderRadius: 10, color: "#e8e8f0", fontSize: 14, outline: "none" }} />
+                  style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px 10px 38px", background: "#fff", border: `1px solid ${C.border}`, borderRadius: 10, color: C.text, fontSize: 14, outline: "none" }} />
               </div>
               <button onClick={() => requireLogin(() => { setScreen("add_course"); setCourseForm({ name: "", professor: "", department: "", credits: "", university: selectedUni }); setUniInputMode("select"); setSimilarCourses([]); setDuplicateError(""); })}
-                style={{ padding: "10px 14px", background: "#7c3aed", border: "none", borderRadius: 10, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                style={{ padding: "10px 14px", background: C.accent, border: "none", borderRadius: 10, color: C.text, fontSize: 13, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
                 ＋ 授業追加
               </button>
             </div>
-            <p style={{ fontSize: 12, color: "#6666aa", marginBottom: 12 }}>{filteredCourses.length}件の授業</p>
+            <p style={{ fontSize: 12, color: C.textMuted, marginBottom: 12 }}>{filteredCourses.length}件の授業</p>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {filteredCourses.map((course) => {
                 const s = getCourseStats(course.id);
                 return (
                   <div key={course.id} onClick={() => { setSelected(course); setScreen("detail"); setActiveTab("data"); }}
-                    style={{ background: "#1a1a2e", border: "1px solid #2a2a4a", borderRadius: 12, padding: "14px 16px", cursor: "pointer" }}
-                    onMouseEnter={(e) => (e.currentTarget.style.borderColor = "#7c3aed")}
-                    onMouseLeave={(e) => (e.currentTarget.style.borderColor = "#2a2a4a")}>
+                    style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 16px", cursor: "pointer" }}
+                    onMouseEnter={(e) => (e.currentTarget.style.borderColor = C.accentDark)}
+                    onMouseLeave={(e) => (e.currentTarget.style.borderColor = C.border)}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
                       <div>
-                        <div style={{ fontWeight: 700, fontSize: 15, color: "#fff" }}>{course.name}</div>
-                        <div style={{ fontSize: 12, color: "#8888aa", marginTop: 2 }}>{course.professor}{course.department ? `｜${course.department}` : ""}｜{course.credits}単位</div>
+                        <div style={{ fontWeight: 700, fontSize: 15, color: C.text }}>{course.name}</div>
+                        <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>{course.professor}{course.department ? `｜${course.department}` : ""}｜{course.credits}単位</div>
                       </div>
                       {s ? (
                         <div style={{ textAlign: "right", flexShrink: 0, marginLeft: 12 }}>
-                          <div style={{ fontSize: 12, color: "#f59e0b", fontWeight: 700 }}>楽単 ★{s.easeAvg}</div>
-                          <div style={{ fontSize: 12, fontWeight: 700, color: s.passRate >= 80 ? "#22c55e" : s.passRate >= 60 ? "#eab308" : "#ef4444" }}>取得率 {s.passRate}%</div>
-                          <div style={{ fontSize: 11, color: "#6666aa" }}>{s.count}件の口コミ</div>
+                          <div style={{ fontSize: 12, color: C.accentDark, fontWeight: 700 }}>楽単 ★{s.easeAvg}</div>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: s.passRate >= 80 ? C.green : s.passRate >= 60 ? C.orange : C.red }}>取得率 {s.passRate}%</div>
+                          <div style={{ fontSize: 11, color: C.textLight }}>{s.count}件の口コミ</div>
                         </div>
-                      ) : (
-                        <div style={{ fontSize: 11, color: "#6666aa", flexShrink: 0, marginLeft: 12 }}>口コミなし</div>
-                      )}
+                      ) : <div style={{ fontSize: 11, color: C.textLight, flexShrink: 0, marginLeft: 12 }}>口コミなし</div>}
                     </div>
-                    {course.tags && (
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                        {course.tags.split(",").filter(Boolean).map((tag) => (
-                          <span key={tag} style={{ fontSize: 11, background: "#2a2a4a", color: "#aaaacc", padding: "2px 8px", borderRadius: 20 }}>#{tag.trim()}</span>
-                        ))}
-                      </div>
-                    )}
+                    {course.tags && <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{course.tags.split(",").filter(Boolean).map((tag) => <span key={tag} style={{ fontSize: 11, background: "#fffacc", color: C.accentDark, padding: "2px 8px", borderRadius: 20 }}>#{tag.trim()}</span>)}</div>}
                   </div>
                 );
               })}
-              {filteredCourses.length === 0 && (
-                <div style={{ textAlign: "center", color: "#6666aa", padding: "40px 0" }}>授業がまだありません。「＋ 授業追加」から追加しましょう！</div>
-              )}
+              {filteredCourses.length === 0 && <div style={{ textAlign: "center", color: C.textMuted, padding: "40px 0" }}>授業がまだありません。「＋ 授業追加」から追加しましょう！</div>}
             </div>
           </div>
         )}
 
         {/* 授業追加フォーム */}
         {screen === "add_course" && (
-          <div>
-            <div style={{ background: "#1a1a2e", border: "1px solid #2a2a4a", borderRadius: 12, padding: "16px" }}>
-              <div style={{ fontSize: 15, color: "#fff", fontWeight: 700, marginBottom: 16 }}>📚 授業を追加する</div>
-
-              <label style={labelStyle}>大学名 *</label>
-              <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-                <button onClick={() => setUniInputMode("select")}
-                  style={{ flex: 1, padding: "6px", border: "1px solid", borderRadius: 6, cursor: "pointer", fontSize: 12, background: uniInputMode === "select" ? "#7c3aed" : "#12121e", borderColor: uniInputMode === "select" ? "#7c3aed" : "#3a3a5c", color: uniInputMode === "select" ? "#fff" : "#8888aa" }}>
-                  既存から選ぶ
+          <div style={cardStyle}>
+            <div style={{ fontSize: 15, color: C.text, fontWeight: 700, marginBottom: 16 }}>📚 授業を追加する</div>
+            <label style={labelStyle}>大学名 *</label>
+            <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+              {["select", "new"].map((mode) => (
+                <button key={mode} onClick={() => setUniInputMode(mode as "select" | "new")}
+                  style={{ flex: 1, padding: "6px", border: `1px solid ${uniInputMode === mode ? C.accentDark : C.border}`, borderRadius: 6, cursor: "pointer", fontSize: 12, background: uniInputMode === mode ? C.accent : "#fff", color: C.text }}>
+                  {mode === "select" ? "既存から選ぶ" : "新しく追加"}
                 </button>
-                <button onClick={() => setUniInputMode("new")}
-                  style={{ flex: 1, padding: "6px", border: "1px solid", borderRadius: 6, cursor: "pointer", fontSize: 12, background: uniInputMode === "new" ? "#7c3aed" : "#12121e", borderColor: uniInputMode === "new" ? "#7c3aed" : "#3a3a5c", color: uniInputMode === "new" ? "#fff" : "#8888aa" }}>
-                  新しく追加
-                </button>
-              </div>
-
-              {uniInputMode === "select" ? (
-                <select value={courseForm.university} onChange={(e) => setCourseForm({ ...courseForm, university: e.target.value })}
-                  style={{ ...inputStyle, appearance: "none" as const }}>
-                  <option value="">大学を選択してください</option>
-                  {universities.map(u => <option key={u} value={u}>{u}</option>)}
-                </select>
-              ) : (
-                <input value={courseForm.university} onChange={(e) => setCourseForm({ ...courseForm, university: e.target.value })}
-                  placeholder="例：早稲田大学（正式名称で入力）" style={inputStyle} />
-              )}
-
-              <label style={labelStyle}>授業名 *</label>
-              <input value={courseForm.name} onChange={(e) => setCourseForm({ ...courseForm, name: e.target.value })}
-                placeholder="例：経営学概論" style={{ ...inputStyle, borderColor: duplicateError ? "#ef4444" : "#3a3a5c" }} />
-
-              {duplicateError && (
-                <div style={{ background: "#450a0a", border: "1px solid #ef4444", borderRadius: 8, padding: "10px 12px", marginBottom: 8, fontSize: 12, color: "#ef4444" }}>
-                  ⚠️ {duplicateError}
-                </div>
-              )}
-
-              {similarCourses.length > 0 && (
-                <div style={{ background: "#1c1a00", border: "1px solid #eab308", borderRadius: 8, padding: "10px 12px", marginBottom: 8 }}>
-                  <div style={{ fontSize: 12, color: "#eab308", fontWeight: 600, marginBottom: 6 }}>⚠️ 似た授業がすでに登録されています。これじゃないですか？</div>
-                  {similarCourses.map(c => (
-                    <div key={c.id} onClick={() => { setSelected(c); setSelectedUni(c.university); setScreen("detail"); }}
-                      style={{ fontSize: 12, color: "#e8e8f0", padding: "6px 8px", background: "#12121e", borderRadius: 6, cursor: "pointer", marginBottom: 4 }}>
-                      <span style={{ fontWeight: 600 }}>{c.name}</span>
-                      <span style={{ color: "#8888aa" }}> / {c.professor}</span>
-                      <span style={{ color: "#7c3aed", marginLeft: 8, fontSize: 11 }}>→ この授業を見る</span>
-                    </div>
-                  ))}
-                  <div style={{ fontSize: 11, color: "#8888aa", marginTop: 6 }}>違う場合はそのまま追加できます</div>
-                </div>
-              )}
-
-              <label style={labelStyle}>教員名 *</label>
-              <input value={courseForm.professor} onChange={(e) => setCourseForm({ ...courseForm, professor: e.target.value })}
-                placeholder="例：田中 誠一" style={inputStyle} />
-
-              <label style={labelStyle}>学部・学科（任意）</label>
-              <input value={courseForm.department} onChange={(e) => setCourseForm({ ...courseForm, department: e.target.value })}
-                placeholder="例：商学部" style={inputStyle} />
-
-              <label style={labelStyle}>単位数 *</label>
-              <select value={courseForm.credits} onChange={(e) => setCourseForm({ ...courseForm, credits: e.target.value })}
-                style={{ ...inputStyle, appearance: "none" as const }}>
-                <option value="">選択してください</option>
-                {["1", "2", "3", "4"].map(c => <option key={c} value={c}>{c}単位</option>)}
+              ))}
+            </div>
+            {uniInputMode === "select" ? (
+              <select value={courseForm.university} onChange={(e) => setCourseForm({ ...courseForm, university: e.target.value })} style={{ ...inputStyle, appearance: "none" as const }}>
+                <option value="">大学を選択してください</option>
+                {universities.map(u => <option key={u} value={u}>{u}</option>)}
               </select>
-
-              <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-                <button onClick={() => { setScreen(selectedUni ? "courses" : "top"); setSimilarCourses([]); setDuplicateError(""); }}
-                  style={{ flex: 1, padding: "10px", background: "none", border: "1px solid #3a3a5c", borderRadius: 6, color: "#8888aa", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
-                  キャンセル
-                </button>
-                <button onClick={submitCourse}
-                  disabled={addingCourse || !courseForm.name || !courseForm.professor || !courseForm.university || !courseForm.credits || !!duplicateError}
-                  style={{ flex: 2, padding: "10px", background: "#7c3aed", border: "none", borderRadius: 6, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", opacity: (addingCourse || !!duplicateError) ? 0.5 : 1 }}>
-                  {addingCourse ? "追加中..." : "授業を追加する"}
-                </button>
+            ) : (
+              <input value={courseForm.university} onChange={(e) => setCourseForm({ ...courseForm, university: e.target.value })} placeholder="例：早稲田大学（正式名称で入力）" style={inputStyle} />
+            )}
+            <label style={labelStyle}>授業名 *</label>
+            <input value={courseForm.name} onChange={(e) => setCourseForm({ ...courseForm, name: e.target.value })} placeholder="例：経営学概論" style={{ ...inputStyle, borderColor: duplicateError ? C.red : C.border }} />
+            {duplicateError && <div style={{ background: C.redBg, border: `1px solid ${C.red}`, borderRadius: 8, padding: "10px 12px", marginBottom: 8, fontSize: 12, color: C.red }}>⚠️ {duplicateError}</div>}
+            {similarCourses.length > 0 && (
+              <div style={{ background: "#fffacc", border: `1px solid ${C.borderStrong}`, borderRadius: 8, padding: "10px 12px", marginBottom: 8 }}>
+                <div style={{ fontSize: 12, color: C.accentDark, fontWeight: 700, marginBottom: 6 }}>⚠️ 似た授業がすでに登録されています。これじゃないですか？</div>
+                {similarCourses.map(c => (
+                  <div key={c.id} onClick={() => { setSelected(c); setSelectedUni(c.university); setScreen("detail"); }} style={{ fontSize: 12, color: C.text, padding: "6px 8px", background: "#fff", borderRadius: 6, cursor: "pointer", marginBottom: 4, border: `1px solid ${C.border}` }}>
+                    <span style={{ fontWeight: 700 }}>{c.name}</span><span style={{ color: C.textMuted }}> / {c.professor}</span>
+                    <span style={{ color: C.accentDark, marginLeft: 8, fontSize: 11 }}>→ この授業を見る</span>
+                  </div>
+                ))}
+                <div style={{ fontSize: 11, color: C.textMuted, marginTop: 6 }}>違う場合はそのまま追加できます</div>
               </div>
+            )}
+            <label style={labelStyle}>教員名 *</label>
+            <input value={courseForm.professor} onChange={(e) => setCourseForm({ ...courseForm, professor: e.target.value })} placeholder="例：田中 誠一" style={inputStyle} />
+            <label style={labelStyle}>学部・学科（任意）</label>
+            <input value={courseForm.department} onChange={(e) => setCourseForm({ ...courseForm, department: e.target.value })} placeholder="例：商学部" style={inputStyle} />
+            <label style={labelStyle}>単位数 *</label>
+            <select value={courseForm.credits} onChange={(e) => setCourseForm({ ...courseForm, credits: e.target.value })} style={{ ...inputStyle, appearance: "none" as const }}>
+              <option value="">選択してください</option>
+              {["1", "2", "3", "4"].map(c => <option key={c} value={c}>{c}単位</option>)}
+            </select>
+            <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+              <button onClick={() => { setScreen(selectedUni ? "courses" : "top"); setSimilarCourses([]); setDuplicateError(""); }} style={{ flex: 1, padding: "10px", background: "none", border: `1px solid ${C.border}`, borderRadius: 6, color: C.textMuted, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>キャンセル</button>
+              <button onClick={submitCourse} disabled={addingCourse || !courseForm.name || !courseForm.professor || !courseForm.university || !courseForm.credits || !!duplicateError}
+                style={{ flex: 2, padding: "10px", background: C.accent, border: "none", borderRadius: 6, color: C.text, fontSize: 14, fontWeight: 700, cursor: "pointer", opacity: (addingCourse || !!duplicateError) ? 0.5 : 1 }}>
+                {addingCourse ? "追加中..." : "授業を追加する"}
+              </button>
             </div>
           </div>
         )}
@@ -532,140 +443,99 @@ export default function App() {
         {/* 授業詳細 */}
         {screen === "detail" && selected && (
           <div>
-            <div style={{ background: "#1a1a2e", border: "1px solid #2a2a4a", borderRadius: 12, padding: "16px", marginBottom: 12 }}>
-              <h2 style={{ margin: "0 0 4px", fontSize: 18, color: "#fff" }}>{selected.name}</h2>
-              <div style={{ fontSize: 13, color: "#8888aa", marginBottom: 12 }}>{selected.professor}{selected.department ? `｜${selected.department}` : ""}｜{selected.credits}単位</div>
+            <div style={cardStyle}>
+              <h2 style={{ margin: "0 0 4px", fontSize: 18, color: C.text }}>{selected.name}</h2>
+              <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 12 }}>{selected.professor}{selected.department ? `｜${selected.department}` : ""}｜{selected.credits}単位</div>
               {stats ? (
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8 }}>
                   {[
-                    { label: "楽単レベル", value: `★${stats.easeAvg}`, color: "#f59e0b" },
-                    { label: "課題&テスト", value: `★${stats.workloadAvg}`, color: "#a78bfa" },
-                    { label: "単位取得率", value: `${stats.passRate}%`, color: stats.passRate >= 80 ? "#22c55e" : stats.passRate >= 60 ? "#eab308" : "#ef4444" },
-                    { label: "口コミ数", value: `${stats.count}件`, color: "#7c3aed" },
+                    { label: "楽単レベル", value: `★${stats.easeAvg}`, color: C.accentDark },
+                    { label: "課題&テスト", value: `★${stats.workloadAvg}`, color: C.orange },
+                    { label: "単位取得率", value: `${stats.passRate}%`, color: stats.passRate >= 80 ? C.green : stats.passRate >= 60 ? C.orange : C.red },
+                    { label: "口コミ数", value: `${stats.count}件`, color: C.text },
                   ].map((s) => (
-                    <div key={s.label} style={{ background: "#12121e", borderRadius: 8, padding: "10px 8px", textAlign: "center" }}>
-                      <div style={{ fontSize: 11, color: "#6666aa", marginBottom: 4 }}>{s.label}</div>
+                    <div key={s.label} style={{ background: C.bg, borderRadius: 8, padding: "10px 8px", textAlign: "center", border: `1px solid ${C.border}` }}>
+                      <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 4 }}>{s.label}</div>
                       <div style={{ fontSize: 15, fontWeight: 700, color: s.color }}>{s.value}</div>
                     </div>
                   ))}
                 </div>
-              ) : (
-                <div style={{ fontSize: 13, color: "#6666aa" }}>まだ口コミがありません。最初の投稿者になりましょう！</div>
-              )}
-              {selected.tags && (
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 12 }}>
-                  {selected.tags.split(",").filter(Boolean).map((tag) => (
-                    <span key={tag} style={{ fontSize: 11, background: "#2a2a4a", color: "#aaaacc", padding: "2px 8px", borderRadius: 20 }}>#{tag.trim()}</span>
-                  ))}
-                </div>
-              )}
+              ) : <div style={{ fontSize: 13, color: C.textMuted }}>まだ口コミがありません。最初の投稿者になりましょう！</div>}
+              {selected.tags && <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 12 }}>{selected.tags.split(",").filter(Boolean).map((tag) => <span key={tag} style={{ fontSize: 11, background: "#fffacc", color: C.accentDark, padding: "2px 8px", borderRadius: 20 }}>#{tag.trim()}</span>)}</div>}
             </div>
 
             <div style={{ display: "flex", gap: 4, marginBottom: 12 }}>
               {[["data", "📊 授業データ"], ["comments", `💬 口コミ(${comments.length})`]].map(([id, label]) => (
                 <button key={id} onClick={() => setActiveTab(id)}
-                  style={{ flex: 1, padding: "10px 4px", border: "1px solid", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 600, background: activeTab === id ? "#7c3aed" : "#1a1a2e", borderColor: activeTab === id ? "#7c3aed" : "#2a2a4a", color: activeTab === id ? "#fff" : "#8888aa" }}>
+                  style={{ flex: 1, padding: "10px 4px", border: `1px solid ${activeTab === id ? C.accentDark : C.border}`, borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 600, background: activeTab === id ? C.accent : "#fff", color: C.text }}>
                   {label}
                 </button>
               ))}
             </div>
 
-            <div style={{ background: "#1a1a2e", border: "1px solid #2a2a4a", borderRadius: 12, padding: "16px" }}>
+            <div style={cardStyle}>
               {activeTab === "data" && (
-                <div>
-                  {!stats ? (
-                    <div style={{ textAlign: "center", color: "#6666aa", padding: "30px 0" }}>口コミが集まると自動でデータが表示されます</div>
-                  ) : (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-                      <div>
-                        <div style={{ fontSize: 12, color: "#8888aa", marginBottom: 10 }}>✍️ テスト形式</div>
-                        <BarChart items={stats.examTypes} color="#7c3aed" />
-                      </div>
-                      <div>
-                        <div style={{ fontSize: 12, color: "#8888aa", marginBottom: 10 }}>📦 持ち込み可否</div>
-                        <BarChart items={stats.materials} color="#a78bfa" />
-                      </div>
-                      <div>
-                        <div style={{ fontSize: 12, color: "#8888aa", marginBottom: 10 }}>🏃 出席確認</div>
-                        <BarChart items={stats.attendance} color="#22c55e" />
-                      </div>
-                    </div>
-                  )}
-                </div>
+                !stats ? <div style={{ textAlign: "center", color: C.textMuted, padding: "30px 0" }}>口コミが集まると自動でデータが表示されます</div> : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+                    <div><div style={{ fontSize: 12, color: C.textMuted, marginBottom: 10 }}>✍️ テスト形式</div><BarChart items={stats.examTypes} color={C.accentDark} /></div>
+                    <div><div style={{ fontSize: 12, color: C.textMuted, marginBottom: 10 }}>📦 持ち込み可否</div><BarChart items={stats.materials} color={C.orange} /></div>
+                    <div><div style={{ fontSize: 12, color: C.textMuted, marginBottom: 10 }}>🏃 出席確認</div><BarChart items={stats.attendance} color={C.green} /></div>
+                  </div>
+                )
               )}
 
               {activeTab === "comments" && (
                 <div>
-                  {/* 投稿フォーム or ログイン促進 */}
                   {!user ? (
-                    <div style={{ background: "#12121e", borderRadius: 8, padding: 20, marginBottom: 16, textAlign: "center" }}>
+                    <div style={{ background: "#fffacc", borderRadius: 8, padding: 20, marginBottom: 16, textAlign: "center" }}>
                       <div style={{ fontSize: 24, marginBottom: 8 }}>🔐</div>
-                      <div style={{ fontSize: 14, color: "#e8e8f0", marginBottom: 4, fontWeight: 600 }}>口コミを投稿するにはログインが必要です</div>
-                      <div style={{ fontSize: 12, color: "#8888aa", marginBottom: 16 }}>投稿すると広告も非表示になります！</div>
-                      <button onClick={loginWithGoogle}
-                        style={{ padding: "10px 24px", background: "#7c3aed", border: "none", borderRadius: 8, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
-                        Googleでログインして投稿する
-                      </button>
+                      <div style={{ fontSize: 14, color: C.text, marginBottom: 4, fontWeight: 700 }}>口コミを投稿するにはログインが必要です</div>
+                      <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 16 }}>投稿すると広告も非表示になります！</div>
+                      <button onClick={loginWithGoogle} style={{ padding: "10px 24px", background: C.accent, border: "none", borderRadius: 8, color: C.text, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Googleでログインして投稿する</button>
                     </div>
                   ) : (
-                    <div style={{ background: "#12121e", borderRadius: 8, padding: 12, marginBottom: 16 }}>
-                      <div style={{ fontSize: 13, color: "#7c3aed", fontWeight: 700, marginBottom: 12 }}>口コミを投稿する</div>
-
+                    <div style={{ background: C.bg, borderRadius: 8, padding: 12, marginBottom: 16, border: `1px solid ${C.border}` }}>
+                      <div style={{ fontSize: 13, color: C.accentDark, fontWeight: 700, marginBottom: 12 }}>口コミを投稿する</div>
                       <label style={labelStyle}>受講年度 *</label>
                       <select value={form.year} onChange={(e) => setForm({ ...form, year: e.target.value })} style={{ ...inputStyle, appearance: "none" as const }}>
                         <option value="">選択してください</option>
                         {["25年度", "24年度", "23年度", "22年度", "21年度以前"].map(y => <option key={y} value={y}>{y}</option>)}
                       </select>
-
                       <label style={labelStyle}>あなたのGPA *</label>
                       <input value={form.gpa} onChange={(e) => setForm({ ...form, gpa: e.target.value })} placeholder="例：3.2" style={inputStyle} />
-
                       <label style={labelStyle}>楽単レベル * （★5が一番楽単）</label>
-                      <div style={{ marginBottom: 12 }}>
-                        <StarRating value={form.ease_rating} onChange={(v) => setForm({ ...form, ease_rating: v })} />
-                      </div>
-
+                      <div style={{ marginBottom: 12 }}><StarRating value={form.ease_rating} onChange={(v) => setForm({ ...form, ease_rating: v })} /></div>
                       <label style={labelStyle}>課題の少なさ＆テストの易しさ * （★5が一番楽）</label>
-                      <div style={{ marginBottom: 12 }}>
-                        <StarRating value={form.workload_rating} onChange={(v) => setForm({ ...form, workload_rating: v })} />
-                      </div>
-
+                      <div style={{ marginBottom: 12 }}><StarRating value={form.workload_rating} onChange={(v) => setForm({ ...form, workload_rating: v })} /></div>
                       <label style={labelStyle}>テスト形式 *</label>
                       <select value={form.exam_type} onChange={(e) => setForm({ ...form, exam_type: e.target.value })} style={{ ...inputStyle, appearance: "none" as const }}>
                         <option value="">選択してください</option>
                         {["記述式", "選択式（マークシート等）", "レポート提出", "実技・発表", "テストなし"].map(t => <option key={t} value={t}>{t}</option>)}
                       </select>
-
                       <label style={labelStyle}>持ち込み可否 *</label>
                       <select value={form.material_allowed} onChange={(e) => setForm({ ...form, material_allowed: e.target.value })} style={{ ...inputStyle, appearance: "none" as const }}>
                         <option value="">選択してください</option>
                         {["持ち込み可", "持ち込み不可", "一部可（教科書のみ等）", "該当なし（テストなしの場合）"].map(m => <option key={m} value={m}>{m}</option>)}
                       </select>
-
                       <label style={labelStyle}>出席確認 *</label>
                       <select value={form.attendance_type} onChange={(e) => setForm({ ...form, attendance_type: e.target.value })} style={{ ...inputStyle, appearance: "none" as const }}>
                         <option value="">選択してください</option>
                         {["教員口頭", "学生証タッチのみ", "たまに確認", "自由", "オンデマンド"].map(a => <option key={a} value={a}>{a}</option>)}
                       </select>
-
                       <label style={labelStyle}>単位取得 *</label>
                       <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
                         {[["true", "✅ 取得"], ["false", "❌ 落単"]].map(([val, label]) => (
                           <button key={val} onClick={() => setForm({ ...form, passed: val })}
-                            style={{ flex: 1, padding: "8px", border: "1px solid", borderRadius: 6, cursor: "pointer", fontSize: 13, fontWeight: 600, background: form.passed === val ? "#7c3aed" : "#1a1a2e", borderColor: form.passed === val ? "#7c3aed" : "#3a3a5c", color: form.passed === val ? "#fff" : "#8888aa" }}>
+                            style={{ flex: 1, padding: "8px", border: `1px solid ${form.passed === val ? C.accentDark : C.border}`, borderRadius: 6, cursor: "pointer", fontSize: 13, fontWeight: 600, background: form.passed === val ? C.accent : "#fff", color: C.text }}>
                             {label}
                           </button>
                         ))}
                       </div>
-
                       <label style={labelStyle}>コメント（任意）</label>
-                      <textarea value={form.text} onChange={(e) => setForm({ ...form, text: e.target.value })}
-                        placeholder="授業の感想・アドバイスなど自由に" rows={3}
-                        style={{ ...inputStyle, resize: "vertical" as const }} />
-
+                      <textarea value={form.text} onChange={(e) => setForm({ ...form, text: e.target.value })} placeholder="授業の感想・アドバイスなど自由に" rows={3} style={{ ...inputStyle, resize: "vertical" as const }} />
                       <button onClick={submitComment}
                         disabled={submitting || !form.year || !form.gpa || !form.ease_rating || !form.workload_rating || !form.exam_type || !form.material_allowed || !form.attendance_type || !form.passed}
-                        style={{ width: "100%", padding: "10px", background: "#7c3aed", border: "none", borderRadius: 6, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", opacity: submitting ? 0.5 : 1 }}>
+                        style={{ width: "100%", padding: "10px", background: C.accent, border: "none", borderRadius: 6, color: C.text, fontSize: 14, fontWeight: 700, cursor: "pointer", opacity: submitting ? 0.5 : 1 }}>
                         {submitting ? "投稿中..." : "投稿する"}
                       </button>
                     </div>
@@ -673,30 +543,30 @@ export default function App() {
 
                   <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                     {comments.length === 0 ? (
-                      <div style={{ textAlign: "center", color: "#6666aa", padding: "20px 0", fontSize: 13 }}>まだ口コミがありません</div>
+                      <div style={{ textAlign: "center", color: C.textMuted, padding: "20px 0", fontSize: 13 }}>まだ口コミがありません</div>
                     ) : comments.map((c) => (
-                      <div key={c.id} style={{ background: "#12121e", borderRadius: 8, padding: 12 }}>
-                        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
-                          <span style={{ fontSize: 11, color: "#7c3aed", fontWeight: 600 }}>{c.year}</span>
-                          <span style={{ fontSize: 11, color: "#8888aa" }}>GPA {c.gpa}</span>
-                          <span style={{ fontSize: 12, fontWeight: 700, color: c.passed ? "#22c55e" : "#ef4444" }}>{c.passed ? "✅ 取得" : "❌ 落単"}</span>
+                      <div key={c.id} style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 8, padding: 12 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                            <span style={{ fontSize: 11, color: C.accentDark, fontWeight: 700 }}>{c.year}</span>
+                            <span style={{ fontSize: 11, color: C.textMuted }}>GPA {c.gpa}</span>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: c.passed ? C.green : C.red }}>{c.passed ? "✅ 取得" : "❌ 落単"}</span>
+                          </div>
+                          {/* 通報ボタン */}
+                          <button onClick={() => setShowReportModal(c.id)}
+                            style={{ background: "none", border: "none", color: C.textLight, fontSize: 11, cursor: "pointer", padding: "2px 6px", borderRadius: 4 }}
+                            title="この口コミを通報する">
+                            🚨 通報
+                          </button>
                         </div>
                         <div style={{ display: "flex", gap: 12, marginBottom: 8, flexWrap: "wrap" }}>
-                          <div style={{ fontSize: 12 }}>
-                            <span style={{ color: "#8888aa" }}>楽単 </span>
-                            <span style={{ color: "#f59e0b" }}>{"★".repeat(c.ease_rating)}{"☆".repeat(5 - c.ease_rating)}</span>
-                          </div>
-                          <div style={{ fontSize: 12 }}>
-                            <span style={{ color: "#8888aa" }}>課題&テスト </span>
-                            <span style={{ color: "#a78bfa" }}>{"★".repeat(c.workload_rating)}{"☆".repeat(5 - c.workload_rating)}</span>
-                          </div>
+                          <div style={{ fontSize: 12 }}><span style={{ color: C.textMuted }}>楽単 </span><span style={{ color: C.accentDark }}>{"★".repeat(c.ease_rating)}{"☆".repeat(5 - c.ease_rating)}</span></div>
+                          <div style={{ fontSize: 12 }}><span style={{ color: C.textMuted }}>課題&テスト </span><span style={{ color: C.orange }}>{"★".repeat(c.workload_rating)}{"☆".repeat(5 - c.workload_rating)}</span></div>
                         </div>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: c.text ? 8 : 0 }}>
-                          {[c.exam_type, c.material_allowed, c.attendance_type].filter(Boolean).map(tag => (
-                            <span key={tag} style={{ fontSize: 11, background: "#2a2a4a", color: "#aaaacc", padding: "2px 8px", borderRadius: 20 }}>{tag}</span>
-                          ))}
+                          {[c.exam_type, c.material_allowed, c.attendance_type].filter(Boolean).map(tag => <span key={tag} style={{ fontSize: 11, background: "#fffacc", color: C.accentDark, padding: "2px 8px", borderRadius: 20 }}>{tag}</span>)}
                         </div>
-                        {c.text && <div style={{ fontSize: 13, color: "#ccccdd", lineHeight: 1.6 }}>{c.text}</div>}
+                        {c.text && <div style={{ fontSize: 13, color: C.text, lineHeight: 1.6 }}>{c.text}</div>}
                       </div>
                     ))}
                   </div>
