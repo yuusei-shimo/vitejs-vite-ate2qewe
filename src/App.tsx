@@ -284,6 +284,11 @@ export default function App() {
   const [courseForm, setCourseForm] = useState({
     name: "", professor: "", department: "", credits: "", university: "",
   });
+  const [myComment, setMyComment] = useState<Comment | null>(null);
+  const [editMode, setEditMode] = useState(false);
+  const [showDeleteRequest, setShowDeleteRequest] = useState(false);
+  const [deleteReason, setDeleteReason] = useState("");
+  const [deleteSent, setDeleteSent] = useState(false);
 
   useEffect(() => {
     fetchAllCourses();
@@ -299,7 +304,17 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  useEffect(() => { if (selected) fetchComments(selected.id); }, [selected]);
+  useEffect(() => {
+    if (selected) {
+      fetchComments(selected.id);
+      setMyComment(null);
+      setEditMode(false);
+      setShowDeleteRequest(false);
+      setDeleteReason("");
+      setDeleteSent(false);
+      setForm({ year: "", gpa: "", ease_rating: 0, workload_rating: 0, exam_type: "", material_allowed: "", attendance_type: "", passed: "", text: "" });
+    }
+  }, [selected?.id]);
 
   useEffect(() => {
     if (!courseForm.name || courseForm.name.length < 2 || !courseForm.university) {
@@ -317,12 +332,14 @@ export default function App() {
   const fetchComments = async (courseId: number) => {
     const { data } = await supabase.from("comments").select("*").eq("course_id", courseId).order("id", { ascending: false });
     setComments(data || []);
-    if (user) {
-      const mine = (data || []).find((c: Comment) => c.user_id === user.id);
-      setMyComment(mine || null);
-      if (mine) {
-        setForm({ year: mine.year, gpa: mine.gpa, ease_rating: mine.ease_rating, workload_rating: mine.workload_rating, exam_type: mine.exam_type, material_allowed: mine.material_allowed, attendance_type: mine.attendance_type, passed: mine.passed ? "true" : "false", text: mine.text || "" });
-      }
+  };
+
+  const detectMyComment = (data: Comment[]) => {
+    if (!user) return;
+    const mine = data.find((c: Comment) => c.user_id === user.id);
+    setMyComment(mine || null);
+    if (mine) {
+      setForm({ year: mine.year, gpa: mine.gpa, ease_rating: mine.ease_rating, workload_rating: mine.workload_rating, exam_type: mine.exam_type, material_allowed: mine.material_allowed, attendance_type: mine.attendance_type, passed: mine.passed ? "true" : "false", text: mine.text || "" });
     }
   };
 
@@ -373,7 +390,10 @@ export default function App() {
     } else {
       await supabase.from("comments").insert({ course_id: selected.id, year: form.year, gpa: form.gpa, ease_rating: form.ease_rating, workload_rating: form.workload_rating, exam_type: form.exam_type, material_allowed: form.material_allowed, attendance_type: form.attendance_type, passed: form.passed === "true", text: form.text || null, user_id: user?.id || null });
     }
-    await fetchComments(selected.id); await fetchAllComments();
+    const { data } = await supabase.from("comments").select("*").eq("course_id", selected.id).order("id", { ascending: false });
+    setComments(data || []);
+    detectMyComment(data || []);
+    await fetchAllComments();
     setSubmitting(false);
   };
 
@@ -398,13 +418,6 @@ export default function App() {
     (c.name.includes(query) || c.professor.includes(query) || (c.department || "").includes(query) || (c.tags || "").includes(query))
   );
   const stats = selected ? getCourseStats(selected.id) : null;
-
-  // Reset when changing course
-  useEffect(() => {
-    setMyComment(null);
-    setEditMode(false);
-    setForm({ year: "", gpa: "", ease_rating: 0, workload_rating: 0, exam_type: "", material_allowed: "", attendance_type: "", passed: "", text: "" });
-  }, [selected?.id]);
 
   const inputStyle = { width: "100%", boxSizing: "border-box" as const, padding: "8px 10px", background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, color: C.text, fontSize: 14, outline: "none", marginBottom: 8 };
   const labelStyle = { fontSize: 11, color: C.textMuted, marginBottom: 4, display: "block" as const };
@@ -493,8 +506,8 @@ export default function App() {
         </div>
       </div>
 
-      {/* 広告バナー or 登録お礼 */}
-      {user && hasContribution ? null : (
+      {/* バナー */}
+      {!(user && hasContribution) && (
         <div style={{ background: "#fffacc", borderBottom: `1px solid ${C.border}`, padding: "8px 16px" }}>
           <div style={{ maxWidth: 720, margin: "0 auto", textAlign: "center", fontSize: 12 }}>
             {user ? (
@@ -738,20 +751,48 @@ export default function App() {
                       <button onClick={loginWithGoogle} style={{ padding: "10px 24px", background: C.accent, border: "none", borderRadius: 8, color: C.text, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Googleでログインして投稿する</button>
                     </div>
                   ) : myComment && !editMode ? (
-                    <div style={{ background: C.greenBg, border: `1px solid ${C.green}`, borderRadius: 8, padding: 16, marginBottom: 16, textAlign: "center" }}>
-                      <div style={{ fontSize: 24, marginBottom: 6 }}>✅</div>
-                      <div style={{ fontSize: 14, color: C.green, fontWeight: 700, marginBottom: 4 }}>口コミの投稿ありがとうございます！</div>
-                      <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12 }}>あなたの情報が後輩の役に立ちます🙌</div>
-                      <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
-                        <button onClick={() => setEditMode(true)}
-                          style={{ padding: "8px 16px", background: C.accent, border: "none", borderRadius: 6, color: C.text, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                          ✏️ 口コミを編集する
-                        </button>
-                        <button onClick={() => setShowDeleteRequest(true)}
-                          style={{ padding: "8px 16px", background: "none", border: `1px solid ${C.border}`, borderRadius: 6, color: C.textMuted, fontSize: 12, cursor: "pointer" }}>
-                          🗑️ 削除要請
-                        </button>
+                    <div style={{ marginBottom: 16 }}>
+                      <div style={{ background: C.greenBg, border: `1px solid ${C.green}`, borderRadius: 8, padding: 16, textAlign: "center", marginBottom: 8 }}>
+                        <div style={{ fontSize: 24, marginBottom: 6 }}>✅</div>
+                        <div style={{ fontSize: 14, color: C.green, fontWeight: 700, marginBottom: 4 }}>口コミの投稿ありがとうございます！</div>
+                        <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12 }}>あなたの情報が後輩の役に立ちます🙌</div>
+                        <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+                          <button onClick={() => setEditMode(true)} style={{ padding: "8px 16px", background: C.accent, border: "none", borderRadius: 6, color: C.text, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>✏️ 編集する</button>
+                          <button onClick={() => setShowDeleteRequest(true)} style={{ padding: "8px 16px", background: "none", border: `1px solid ${C.border}`, borderRadius: 6, color: C.textMuted, fontSize: 12, cursor: "pointer" }}>🗑️ 削除要請</button>
+                        </div>
                       </div>
+                      {showDeleteRequest && (
+                        <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 8, padding: 14 }}>
+                          {deleteSent ? (
+                            <div style={{ textAlign: "center", padding: "12px 0" }}>
+                              <div style={{ fontSize: 24, marginBottom: 4 }}>✅</div>
+                              <div style={{ fontWeight: 700, color: C.green, fontSize: 13 }}>削除要請を受け付けました</div>
+                            </div>
+                          ) : (
+                            <>
+                              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>🗑️ 削除要請の理由を選択してください</div>
+                              {["誤った情報を投稿してしまった", "個人情報が含まれている", "その他"].map(r => (
+                                <div key={r} onClick={() => setDeleteReason(r)}
+                                  style={{ padding: "10px 12px", borderRadius: 8, border: `1px solid ${deleteReason === r ? C.accentDark : C.border}`, background: deleteReason === r ? "#fffacc" : "#fff", marginBottom: 6, cursor: "pointer", fontSize: 13, fontWeight: deleteReason === r ? 700 : 400 }}>
+                                  {r}
+                                </div>
+                              ))}
+                              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                                <button onClick={() => { setShowDeleteRequest(false); setDeleteReason(""); }} style={{ flex: 1, padding: "8px", background: "none", border: `1px solid ${C.border}`, borderRadius: 6, color: C.textMuted, fontSize: 12, cursor: "pointer" }}>キャンセル</button>
+                                <button onClick={async () => {
+                                  if (!deleteReason || !myComment) return;
+                                  await supabase.from("reports").insert({ comment_id: myComment.id, reason: "削除要請: " + deleteReason, reported_by: user?.id || null });
+                                  setDeleteSent(true);
+                                  setTimeout(() => { setShowDeleteRequest(false); setDeleteReason(""); setDeleteSent(false); }, 3000);
+                                }} disabled={!deleteReason}
+                                  style={{ flex: 2, padding: "8px", background: C.accent, border: "none", borderRadius: 6, color: C.text, fontSize: 12, fontWeight: 700, cursor: "pointer", opacity: !deleteReason ? 0.5 : 1 }}>
+                                  削除要請を送る
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div style={{ background: C.bg, borderRadius: 8, padding: 12, marginBottom: 16, border: `1px solid ${C.border}` }}>
@@ -795,10 +836,7 @@ export default function App() {
                       <textarea value={form.text} onChange={(e) => setForm({ ...form, text: e.target.value })} placeholder="授業の感想・アドバイスなど自由に" rows={3} style={{ ...inputStyle, resize: "vertical" as const }} />
                       <div style={{ display: "flex", gap: 8 }}>
                         {editMode && (
-                          <button onClick={() => setEditMode(false)}
-                            style={{ flex: 1, padding: "10px", background: "none", border: `1px solid ${C.border}`, borderRadius: 6, color: C.textMuted, fontSize: 13, cursor: "pointer" }}>
-                            キャンセル
-                          </button>
+                          <button onClick={() => setEditMode(false)} style={{ flex: 1, padding: "10px", background: "none", border: `1px solid ${C.border}`, borderRadius: 6, color: C.textMuted, fontSize: 13, cursor: "pointer" }}>キャンセル</button>
                         )}
                         <button onClick={submitComment}
                           disabled={submitting || !form.year || !form.gpa || !form.ease_rating || !form.workload_rating || !form.exam_type || !form.material_allowed || !form.attendance_type || !form.passed}
@@ -806,44 +844,6 @@ export default function App() {
                           {submitting ? "送信中..." : editMode ? "変更を保存する" : "投稿する"}
                         </button>
                       </div>
-                    </div>
-                  )}
-
-                  {/* 削除要請モーダル */}
-                  {showDeleteRequest && (
-                    <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, marginBottom: 16 }}>
-                      {deleteSent ? (
-                        <div style={{ textAlign: "center", padding: "16px 0" }}>
-                          <div style={{ fontSize: 28, marginBottom: 6 }}>✅</div>
-                          <div style={{ fontWeight: 700, color: C.green, fontSize: 14 }}>削除要請を受け付けました</div>
-                          <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>確認後、対応いたします</div>
-                        </div>
-                      ) : (
-                        <>
-                          <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 12 }}>🗑️ 口コミの削除要請</div>
-                          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12 }}>削除をご希望の理由をお聞かせください</div>
-                          {["誤った情報を投稿してしまった", "個人情報が含まれている", "その他"].map(r => (
-                            <div key={r} onClick={() => setDeleteReason(r)}
-                              style={{ padding: "10px 12px", borderRadius: 8, border: `1px solid ${deleteReason === r ? C.accentDark : C.border}`, background: deleteReason === r ? "#fffacc" : "#fff", marginBottom: 6, cursor: "pointer", fontSize: 13, fontWeight: deleteReason === r ? 700 : 400 }}>
-                              {r}
-                            </div>
-                          ))}
-                          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                            <button onClick={() => { setShowDeleteRequest(false); setDeleteReason(""); }}
-                              style={{ flex: 1, padding: "10px", background: "none", border: `1px solid ${C.border}`, borderRadius: 6, color: C.textMuted, fontSize: 13, cursor: "pointer" }}>キャンセル</button>
-                            <button onClick={async () => {
-                              if (!deleteReason || !myComment) return;
-                              await supabase.from("reports").insert({ comment_id: myComment.id, reason: "削除要請: " + deleteReason, reported_by: user?.id || null });
-                              setDeleteSent(true);
-                              setDeleteRequestCourse(selected?.name || "");
-                              setTimeout(() => { setShowDeleteRequest(false); setDeleteReason(""); setDeleteSent(false); }, 3000);
-                            }} disabled={!deleteReason}
-                              style={{ flex: 2, padding: "10px", background: C.accent, border: "none", borderRadius: 6, color: C.text, fontSize: 13, fontWeight: 700, cursor: "pointer", opacity: !deleteReason ? 0.5 : 1 }}>
-                              削除要請を送る
-                            </button>
-                          </div>
-                        </>
-                      )}
                     </div>
                   )}
 
