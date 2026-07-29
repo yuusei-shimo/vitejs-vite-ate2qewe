@@ -202,7 +202,7 @@ interface Course {
   tags: string;
   university: string;
 }
-type Screen = "top" | "courses" | "detail" | "add_course" | "terms";
+type Screen = "top" | "courses" | "detail" | "add_course" | "terms" | "delete_request";
 
 // ============================
 // コンポーネント
@@ -307,12 +307,6 @@ export default function App() {
   useEffect(() => {
     if (selected) {
       fetchComments(selected.id);
-      setMyComment(null);
-      setEditMode(false);
-      setShowDeleteRequest(false);
-      setDeleteReason("");
-      setDeleteSent(false);
-      setForm({ year: "", gpa: "", ease_rating: 0, workload_rating: 0, exam_type: "", material_allowed: "", attendance_type: "", passed: "", text: "" });
     }
   }, [selected?.id]);
 
@@ -332,13 +326,14 @@ export default function App() {
   const fetchComments = async (courseId: number) => {
     const { data } = await supabase.from("comments").select("*").eq("course_id", courseId).order("id", { ascending: false });
     setComments(data || []);
+    detectMyComment(data || []);
   };
 
   const detectMyComment = (data: Comment[]) => {
     if (!user) return;
     const mine = data.find((c: Comment) => c.user_id === user.id);
     setMyComment(mine || null);
-    if (mine) {
+    if (mine && !editMode) {
       setForm({ year: mine.year, gpa: mine.gpa, ease_rating: mine.ease_rating, workload_rating: mine.workload_rating, exam_type: mine.exam_type, material_allowed: mine.material_allowed, attendance_type: mine.attendance_type, passed: mine.passed ? "true" : "false", text: mine.text || "" });
     }
   };
@@ -503,23 +498,24 @@ export default function App() {
           {screen === "add_course" && <div style={{ display: "flex", alignItems: "center", gap: 8 }}><button onClick={() => { setScreen(selectedUni ? "courses" : "top"); setSimilarCourses([]); setDuplicateError(""); }} style={{ background: "none", border: "none", color: C.accentDark, cursor: "pointer", fontSize: 12, padding: 0 }}>← 戻る</button><span style={{ fontSize: 13, color: C.text, fontWeight: 700 }}>口コミ・授業を追加</span></div>}
           {screen === "detail" && <div style={{ display: "flex", alignItems: "center", gap: 8 }}><button onClick={() => { setScreen("courses"); setSelected(null); }} style={{ background: "none", border: "none", color: C.accentDark, cursor: "pointer", fontSize: 12, padding: 0 }}>← {selectedUni}</button><span style={{ fontSize: 13, color: C.text, fontWeight: 700 }}>{selected?.name}</span></div>}
           {screen === "terms" && <div style={{ display: "flex", alignItems: "center", gap: 8 }}><button onClick={() => setScreen("top")} style={{ background: "none", border: "none", color: C.accentDark, cursor: "pointer", fontSize: 12, padding: 0 }}>← トップ</button><span style={{ fontSize: 13, color: C.text, fontWeight: 700 }}>利用規約</span></div>}
+          {screen === "delete_request" && <div style={{ display: "flex", alignItems: "center", gap: 8 }}><button onClick={() => setScreen("top")} style={{ background: "none", border: "none", color: C.accentDark, cursor: "pointer", fontSize: 12, padding: 0 }}>← トップ</button><span style={{ fontSize: 13, color: C.text, fontWeight: 700 }}>削除要請</span></div>}
         </div>
       </div>
 
       {/* バナー */}
-      {!(user && hasContribution) && (
-        <div style={{ background: "#fffacc", borderBottom: `1px solid ${C.border}`, padding: "8px 16px" }}>
-          <div style={{ maxWidth: 720, margin: "0 auto", textAlign: "center", fontSize: 12 }}>
-            {user ? (
-              <span style={{ color: C.green, fontWeight: 700 }}>🎉 ご登録ありがとうございます！口コミを1件投稿すると広告が消えます</span>
-            ) : (
-              <span style={{ color: C.accentDark, cursor: "pointer", fontWeight: 600 }} onClick={() => setShowLoginModal(true)}>
-                👑 先着1000名は永久無料＆広告なし！今すぐログイン →
-              </span>
-            )}
-          </div>
+      <div style={{ background: "#fffacc", borderBottom: `1px solid ${C.border}`, padding: "8px 16px" }}>
+        <div style={{ maxWidth: 720, margin: "0 auto", textAlign: "center", fontSize: 12 }}>
+          {!user ? (
+            <span style={{ color: C.accentDark, cursor: "pointer", fontWeight: 600 }} onClick={() => setShowLoginModal(true)}>
+              👑 先着1000名は永久無料＆広告なし！今すぐログイン →
+            </span>
+          ) : hasContribution ? (
+            <span style={{ color: C.green, fontWeight: 700 }}>✅ 広告なし有効中！ご利用ありがとうございます</span>
+          ) : (
+            <span style={{ color: C.green, fontWeight: 700 }}>🎉 ご登録ありがとうございます！口コミを1件投稿すると広告が消えます</span>
+          )}
         </div>
-      )}
+      </div>
 
       <div style={{ maxWidth: 720, margin: "0 auto", padding: "16px 16px" }}>
 
@@ -580,8 +576,47 @@ export default function App() {
             <div style={{ marginTop: 32, paddingTop: 16, borderTop: `1px solid ${C.border}`, textAlign: "center" }}>
               <button onClick={() => setScreen("terms")} style={{ background: "none", border: "none", color: C.textMuted, fontSize: 12, cursor: "pointer", textDecoration: "underline" }}>利用規約</button>
               <span style={{ color: C.textLight, margin: "0 8px", fontSize: 12 }}>|</span>
+              <button onClick={() => setScreen("delete_request")} style={{ background: "none", border: "none", color: C.textMuted, fontSize: 12, cursor: "pointer", textDecoration: "underline" }}>削除要請</button>
+              <span style={{ color: C.textLight, margin: "0 8px", fontSize: 12 }}>|</span>
               <span style={{ color: C.textLight, fontSize: 12 }}>© 2025 楽卒.com</span>
             </div>
+          </div>
+        )}
+
+        {/* 削除要請 */}
+        {screen === "delete_request" && (
+          <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "16px", marginBottom: 12 }}>
+            <h2 style={{ margin: "0 0 8px", fontSize: 18, color: C.text }}>削除要請フォーム</h2>
+            <p style={{ margin: "0 0 16px", fontSize: 13, color: C.textMuted }}>投稿した口コミの削除をご希望の場合は、以下からお申し込みください。内容確認後、対応いたします。</p>
+            {deleteSent ? (
+              <div style={{ textAlign: "center", padding: "24px 0" }}>
+                <div style={{ fontSize: 32, marginBottom: 8 }}>✅</div>
+                <div style={{ fontWeight: 700, color: C.green, fontSize: 15 }}>削除要請を受け付けました</div>
+                <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>確認後、対応いたします</div>
+              </div>
+            ) : (
+              <>
+                <label style={{ fontSize: 11, color: C.textMuted, marginBottom: 4, display: "block" }}>対象の授業名</label>
+                <input value={deleteReason} onChange={(e) => setDeleteReason(e.target.value)} placeholder="例：経営学概論（早稲田大学）"
+                  style={{ width: "100%", boxSizing: "border-box" as const, padding: "8px 10px", background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, color: C.text, fontSize: 14, outline: "none", marginBottom: 8 }} />
+                <label style={{ fontSize: 11, color: C.textMuted, marginBottom: 4, display: "block" }}>削除理由</label>
+                {["誤った情報を投稿してしまった", "個人情報が含まれている", "その他"].map(r => (
+                  <div key={r} onClick={() => setDeleteReason(r)}
+                    style={{ padding: "10px 12px", borderRadius: 8, border: `1px solid ${deleteReason === r ? C.accentDark : C.border}`, background: deleteReason === r ? "#fffacc" : "#fff", marginBottom: 6, cursor: "pointer", fontSize: 13, fontWeight: deleteReason === r ? 700 : 400 }}>
+                    {r}
+                  </div>
+                ))}
+                <button onClick={async () => {
+                  if (!deleteReason) return;
+                  await supabase.from("reports").insert({ comment_id: 0, reason: "削除要請（フォーム）: " + deleteReason, reported_by: user?.id || null });
+                  setDeleteSent(true);
+                  setTimeout(() => { setDeleteSent(false); setDeleteReason(""); }, 4000);
+                }} disabled={!deleteReason}
+                  style={{ width: "100%", marginTop: 8, padding: "10px", background: C.accent, border: "none", borderRadius: 6, color: C.text, fontSize: 14, fontWeight: 700, cursor: "pointer", opacity: !deleteReason ? 0.5 : 1 }}>
+                  削除要請を送る
+                </button>
+              </>
+            )}
           </div>
         )}
 
