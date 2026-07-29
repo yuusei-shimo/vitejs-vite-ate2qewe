@@ -275,6 +275,8 @@ export default function App() {
   const [submitting, setSubmitting] = useState(false);
   const [addingCourse, setAddingCourse] = useState(false);
   const [courseAdded, setCourseAdded] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(false);
+  const [commentAdded, setCommentAdded] = useState(false);
   const [duplicateError, setDuplicateError] = useState("");
   const [similarCourses, setSimilarCourses] = useState<Course[]>([]);
   const [form, setForm] = useState({
@@ -294,7 +296,7 @@ export default function App() {
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
       setUser(session?.user as User ?? null);
-      if (session) { setShowLoginModal(false); fetchOrCreateProfile(session.user.id); }
+      if (session) { setShowLoginModal(false); fetchOrCreateProfile(session.user.id); setShowWelcome(true); setTimeout(() => setShowWelcome(false), 3000); }
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -364,6 +366,8 @@ export default function App() {
     setForm({ year: "", gpa: "", ease_rating: 0, workload_rating: 0, exam_type: "", material_allowed: "", attendance_type: "", passed: "", text: "" });
     await fetchComments(selected.id); await fetchAllComments();
     setSubmitting(false);
+    setCommentAdded(true);
+    setTimeout(() => setCommentAdded(false), 3000);
   };
 
   const getCourseStats = (courseId: number) => {
@@ -445,6 +449,24 @@ export default function App() {
         </div>
       )}
 
+      {/* ログイン歓迎トースト */}
+      {showWelcome && (
+        <div style={{ position: "fixed", top: 20, left: "50%", transform: "translateX(-50%)", zIndex: 300, background: C.accent, border: `1px solid ${C.accentDark}`, borderRadius: 12, padding: "14px 24px", textAlign: "center", boxShadow: "0 4px 20px rgba(0,0,0,0.15)", minWidth: 280 }}>
+          <div style={{ fontSize: 24, marginBottom: 4 }}>🎉</div>
+          <div style={{ fontWeight: 700, fontSize: 15, color: C.text }}>ご登録ありがとうございます！</div>
+          <div style={{ fontSize: 12, color: C.accentDark, marginTop: 4 }}>口コミを投稿すると広告が消えます</div>
+        </div>
+      )}
+
+      {/* 口コミ投稿完了トースト */}
+      {commentAdded && (
+        <div style={{ position: "fixed", top: 20, left: "50%", transform: "translateX(-50%)", zIndex: 300, background: C.greenBg, border: `1px solid ${C.green}`, borderRadius: 12, padding: "14px 24px", textAlign: "center", boxShadow: "0 4px 20px rgba(0,0,0,0.15)", minWidth: 280 }}>
+          <div style={{ fontSize: 24, marginBottom: 4 }}>✅</div>
+          <div style={{ fontWeight: 700, fontSize: 15, color: C.green }}>口コミの投稿ありがとうございます！</div>
+          <div style={{ fontSize: 12, color: C.green, marginTop: 4 }}>あなたの情報が後輩の役に立ちます🙌</div>
+        </div>
+      )}
+
       {/* ヘッダー */}
       <div style={{ background: C.bg, borderBottom: `2px solid ${C.accent}`, padding: "14px 16px" }}>
         <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -493,7 +515,7 @@ export default function App() {
           <div>
             <div style={{ textAlign: "center", padding: "24px 0 20px" }}>
               <div style={{ fontSize: 40, marginBottom: 10 }}>🎓</div>
-              <h2 style={{ margin: "0 0 6px", fontSize: 22, color: C.text }}>楽して卒業！楽単検索サイト</h2>
+              <h2 style={{ margin: "0 0 6px", fontSize: 22, color: C.text }}>楽単特化！学生の味方サイト</h2>
             </div>
 
             <div style={{ marginBottom: 20 }}>
@@ -568,7 +590,7 @@ export default function App() {
               </div>
             ))}
             <div style={{ marginTop: 16, padding: 12, background: "#fffacc", borderRadius: 8, fontSize: 12, color: C.accentDark }}>
-              制定日：2025年1月1日　運営：楽卒.com
+              制定日：2026年1月1日　運営：楽卒.com
             </div>
           </div>
         )}
