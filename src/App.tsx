@@ -380,8 +380,10 @@ export default function App() {
     if (!selected || !form.year || !form.gpa || !form.ease_rating || !form.workload_rating || !form.exam_type || !form.material_allowed || !form.attendance_type || !form.passed) return;
     setSubmitting(true);
     if (myComment && editMode) {
-      await supabase.from("comments").update({ year: form.year, gpa: form.gpa, ease_rating: form.ease_rating, workload_rating: form.workload_rating, exam_type: form.exam_type, material_allowed: form.material_allowed, attendance_type: form.attendance_type, passed: form.passed === "true", text: form.text || null }).eq("id", myComment.id);
+      const { error } = await supabase.from("comments").update({ year: form.year, gpa: form.gpa, ease_rating: form.ease_rating, workload_rating: form.workload_rating, exam_type: form.exam_type, material_allowed: form.material_allowed, attendance_type: form.attendance_type, passed: form.passed === "true", text: form.text || null }).eq("id", myComment.id);
+      console.log("update error:", error);
       setEditMode(false);
+      setMyComment(null);
     } else {
       await supabase.from("comments").insert({ course_id: selected.id, year: form.year, gpa: form.gpa, ease_rating: form.ease_rating, workload_rating: form.workload_rating, exam_type: form.exam_type, material_allowed: form.material_allowed, attendance_type: form.attendance_type, passed: form.passed === "true", text: form.text || null, user_id: user?.id || null });
     }
