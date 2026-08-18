@@ -486,7 +486,7 @@ export default function App() {
                 </span>
               )}
               {hasContribution && !profile?.is_og && <span style={{ fontSize: 10, background: C.greenBg, color: C.green, padding: "2px 8px", borderRadius: 20, fontWeight: 700 }}>広告なし</span>}
-              <img src={user.user_metadata.avatar_url} style={{ width: 36, height: 36, borderRadius: "50%", border: `2px solid ${profile?.is_og ? C.accentDark : C.accent}` }} />
+              <img src={user.user_metadata.avatar_url} style={{ width: 28, height: 28, borderRadius: "50%", border: `2px solid ${profile?.is_og ? C.accentDark : C.accent}` }} />
               <button onClick={logout} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 6, color: C.textMuted, fontSize: 11, padding: "4px 8px", cursor: "pointer" }}>ログアウト</button>
             </div>
           ) : (
